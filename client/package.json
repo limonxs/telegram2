@@ -1,0 +1,94 @@
+{
+  "name": "client",
+  "private": true,
+  "version": "1.0.3",
+  "description": "LAN Messenger App",
+  "author": "Antigravity",
+  "main": "main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "electron:start": "electron .",
+    "start": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && npm run electron:start\"",
+    "pack": "npm run build && electron-builder --win",
+    "pack:portable": "npm run build && electron-builder --win portable",
+    "pack:installer": "npm run build && electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "com.telecord.messenger",
+    "productName": "Telecord",
+    "publish": {
+      "provider": "github",
+      "owner": "liman-dev",
+      "repo": "telegram2"
+    },
+    "directories": {
+      "output": "dist_electron",
+      "buildResources": "build-resources"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build-resources/icon.ico"
+    },
+    "nsis": {
+      "artifactName": "Telecord-Setup-${version}.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build-resources/icon.ico",
+      "uninstallerIcon": "build-resources/icon.ico",
+      "installerSidebar": "build-resources/installerSidebar.bmp",
+      "installerHeader": "build-resources/installerHeader.bmp",
+      "uninstallerSidebar": "build-resources/installerSidebar.bmp",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Telecord",
+      "license": null,
+      "installerLanguages": [
+        "ru",
+        "en"
+      ],
+      "language": 1049,
+      "warningsAsErrors": false
+    },
+    "portable": {
+      "artifactName": "Telecord-Portable-${version}.${ext}"
+    },
+    "files": [
+      "dist/**/*",
+      "main.js",
+      "preload.js",
+      "package.json"
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^10.0.3",
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "png2icons": "^2.0.1",
+    "vite": "^8.0.12",
+    "wait-on": "^9.0.10"
+  }
+}

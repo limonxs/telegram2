@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telecord Server</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app">
+    <!-- Animated background -->
+    <div class="bg-effects">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+      <div class="grid-overlay"></div>
+    </div>
+
+    <!-- Titlebar drag region -->
+    <div class="titlebar">
+      <div class="titlebar-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+        </svg>
+        Telecord Server
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Left: Server Control Panel -->
+      <div class="control-panel">
+        <!-- Logo & Status -->
+        <div class="server-hero">
+          <div class="server-logo" id="serverLogo">
+            <div class="logo-ring"></div>
+            <div class="logo-ring ring-2"></div>
+            <div class="logo-core">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+                <line x1="6" y1="6" x2="6.01" y2="6"/>
+                <line x1="6" y1="18" x2="6.01" y2="18"/>
+              </svg>
+            </div>
+          </div>
+          <div class="server-status-text">
+            <h1 id="statusTitle">Сервер остановлен</h1>
+            <p id="statusSubtitle" class="muted">Нажмите кнопку для запуска</p>
+          </div>
+        </div>
+
+        <!-- Big Action Button -->
+        <button class="action-btn" id="actionBtn" onclick="toggleServer()">
+          <div class="btn-glow"></div>
+          <div class="btn-content">
+            <svg id="btnIconPlay" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5,3 19,12 5,21"/>
+            </svg>
+            <svg id="btnIconStop" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+              <rect x="4" y="4" width="16" height="16" rx="2"/>
+            </svg>
+            <span id="btnText">Запустить сервер</span>
+          </div>
+        </button>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">Аптайм</span>
+              <span class="stat-value" id="uptimeValue">--:--:--</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon icon-users">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">Подключений</span>
+              <span class="stat-value" id="connectionsValue">0</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon icon-mem">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">RAM</span>
+              <span class="stat-value" id="memoryValue">--</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon icon-port">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 0 1 9-9"/></svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">Порт</span>
+              <span class="stat-value" id="portValue">3001</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Network Info -->
+        <div class="network-section">
+          <h3 class="section-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+            Сетевые адреса
+          </h3>
+          <div class="ip-list" id="ipList">
+            <div class="ip-item loading-shimmer">Загрузка...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Log Terminal -->
+      <div class="log-panel">
+        <div class="log-header">
+          <div class="log-header-left">
+            <div class="terminal-dots">
+              <span class="dot dot-red"></span>
+              <span class="dot dot-yellow"></span>
+              <span class="dot dot-green"></span>
+            </div>
+            <span class="log-title">Консоль сервера</span>
+          </div>
+          <button class="clear-btn" onclick="clearLogs()" title="Очистить логи">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19,6v14a2,2,0,0,1-2,2H7a2,2,0,0,1-2-2V6M8,6V4a2,2,0,0,1,2-2h4a2,2,0,0,1,2,2V6"/></svg>
+          </button>
+        </div>
+        <div class="log-body" id="logBody">
+          <div class="log-entry system">
+            <span class="log-time">--:--:--</span>
+            <span class="log-badge badge-system">SYS</span>
+            <span class="log-text">Telecord Server Launcher v1.0 готов к работе</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

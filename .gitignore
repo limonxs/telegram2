@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist_electron/
+.gemini/
+.vscode/
+*.log
+release/
+--win32-x64/
+*.exe
+*.ico
+*.bmp
