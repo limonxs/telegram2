@@ -845,7 +845,7 @@ button:active {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background-color: #0e1621; /* Classic Telegram Dark theme */
+  background-color: #1c1c24; /* Sleek slate midnight background */
   position: relative;
 }
 .header-info {
@@ -903,7 +903,7 @@ button:active {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #0e1621;
+  background: #1c1c24;
 }
 .empty-state-card {
   text-align: center;
