@@ -40,8 +40,8 @@ body {
   background-color: var(--bg-dark);
   color: var(--text-main);
   overflow: hidden; /* App-like feel */
-  background-image: radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.03) 0%, transparent 40%),
-                    radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.04) 0%, transparent 50%);
+  background-image: radial-gradient(circle at 10% 20%, rgba(112, 128, 144, 0.03) 0%, transparent 40%),
+                    radial-gradient(circle at 90% 80%, rgba(112, 128, 144, 0.04) 0%, transparent 50%);
 }
 
 /* Make inputs/buttons clickable in draggable regions */
@@ -987,8 +987,8 @@ button:active {
 }
 .chat-input-area {
   padding: 15px 20px;
-  background: #17212b;
-  border-top: 1px solid rgba(0,0,0,0.3);
+  background: #252530 !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
 }
 .chat-input-form {
   display: flex;
@@ -2817,12 +2817,12 @@ input[type="text"]:focus, input[type="password"]:focus, .chat-input input:focus 
   border-radius: 28px !important;
 }
 
-/* Styled Outgoing Message Bubbles (Violet-Indigo Gradient) */
+/* Styled Outgoing Message Bubbles (Premium Midnight Slate) */
 .own .message-bubble {
-  background: linear-gradient(135deg, #7c3aed, #4f46e5) !important;
+  background: #2d2f3d !important;
   color: #ffffff !important;
   border-radius: 18px 18px 4px 18px !important;
-  box-shadow: 0 4px 15px rgba(124, 58, 237, 0.2) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
   border: none !important;
 }
 
@@ -2836,7 +2836,7 @@ input[type="text"]:focus, input[type="password"]:focus, .chat-input input:focus 
 }
 
 .message-sender-name {
-  color: #a78bfa !important;
+  color: #4ba3e3 !important;
   font-weight: 700 !important;
   font-family: 'Outfit', sans-serif;
 }
@@ -2859,7 +2859,7 @@ input[type="text"]:focus, input[type="password"]:focus, .chat-input input:focus 
 }
 
 .chat-item.active {
-  background: linear-gradient(90deg, rgba(139, 92, 246, 0.12) 0%, rgba(99, 102, 241, 0.02) 100%) !important;
+  background: linear-gradient(90deg, rgba(112, 128, 144, 0.16) 0%, rgba(112, 128, 144, 0.02) 100%) !important;
   border-left: 3px solid var(--primary) !important;
 }
 
@@ -2875,13 +2875,13 @@ button:not(.recording-cancel-btn):not(.attachment-preview-cancel-btn):not(.close
   font-weight: 700 !important;
   font-family: 'Outfit', sans-serif;
   letter-spacing: 0.2px;
-  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.25) !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25) !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
 button:not(.recording-cancel-btn):not(.attachment-preview-cancel-btn):not(.close-btn):not(.call-header-btn):not(.icon-btn):not(.ctrl-btn):not(.send-msg-btn):not(.discord-header-icon-btn):not(.nav-tab-btn):not(.drawer-menu-item):hover {
   transform: translateY(-1px) !important;
-  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.45) !important;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4) !important;
 }
 
 button:not(.recording-cancel-btn):not(.attachment-preview-cancel-btn):not(.close-btn):not(.call-header-btn):not(.icon-btn):not(.ctrl-btn):not(.send-msg-btn):not(.discord-header-icon-btn):not(.nav-tab-btn):not(.drawer-menu-item):active {
@@ -2914,13 +2914,13 @@ button:not(.recording-cancel-btn):not(.attachment-preview-cancel-btn):not(.close
 /* Specific themed overrides for send message button */
 .send-msg-btn {
   background: var(--primary);
-  box-shadow: 0 4px 10px rgba(139, 92, 246, 0.2);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25) !important;
   transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;
 }
 
 .send-msg-btn:hover {
   background: var(--primary-hover);
-  box-shadow: 0 6px 14px rgba(139, 92, 246, 0.35);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4) !important;
 }
 
 /* Voice & Speaking Overrides */
@@ -3014,7 +3014,7 @@ button:not(.recording-cancel-btn):not(.attachment-preview-cancel-btn):not(.close
 }
 
 .nav-tab-btn.active {
-  background-color: rgba(139, 92, 246, 0.1) !important;
+  background-color: rgba(112, 128, 144, 0.15) !important;
   color: var(--primary) !important;
 }
 
@@ -3146,7 +3146,7 @@ button:not(.recording-cancel-btn):not(.attachment-preview-cancel-btn):not(.close
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.25);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
 }
 
 .drawer-avatar {
