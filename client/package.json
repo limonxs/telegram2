@@ -21,7 +21,7 @@
     "productName": "Telecord",
     "publish": {
       "provider": "github",
-      "owner": "liman-dev",
+      "owner": "limonxs",
       "repo": "telegram2"
     },
     "directories": {
