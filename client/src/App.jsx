@@ -2,6 +2,26 @@ import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import './index.css';
 
+// Hashing function to assign a deterministic beautiful pastel color to chat placeholders
+const getPastelColorForId = (id) => {
+  const colors = [
+    '#4a76a8', // Pastel Blue
+    '#4ba878', // Pastel Green
+    '#d68d4a', // Pastel Orange
+    '#c46262', // Pastel Red
+    '#7e6ca8', // Pastel Violet
+    '#499da6'  // Pastel Cyan
+  ];
+  if (!id) return colors[0];
+  let hash = 0;
+  const idStr = String(id);
+  for (let i = 0; i < idStr.length; i++) {
+    hash = idStr.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % colors.length;
+  return colors[index];
+};
+
 // --- Client-side custom double encryption utilities --- //
 function encryptMessage(text, chatId) {
   if (!text) return '';
@@ -834,7 +854,10 @@ function App() {
   const [isMidnightMode, setIsMidnightMode] = useState(localStorage.getItem('midnightMode') === 'true');
   const [newGroupName, setNewGroupName] = useState('');
   const [showProfile, setShowProfile] = useState(null); // User details
-  
+  const [showEditGroupModal, setShowEditGroupModal] = useState(false);
+  const [editGroupName, setEditGroupName] = useState('');
+  const [editGroupAvatar, setEditGroupAvatar] = useState(null);
+
   // Voice Call State
   const [inVoice, setInVoice] = useState(false);
   const [activeCallChatId, setActiveCallChatId] = useState(null);
@@ -1585,6 +1608,21 @@ function App() {
       setChats(prev => {
         if (prev.some(c => c.id === newChat.id)) return prev;
         return [...prev, newChat];
+      });
+    });
+
+    newSocket.on('group_details_updated', ({ chatId, name, avatar }) => {
+      setChats(prev => prev.map(c => {
+        if (c.id === chatId) {
+          return { ...c, name, avatar };
+        }
+        return c;
+      }));
+      setActiveChat(prev => {
+        if (prev && prev.id === chatId) {
+          return { ...prev, name, avatar };
+        }
+        return prev;
       });
     });
 
@@ -2598,7 +2636,7 @@ function App() {
                       className={`chat-item ${selectedChatId === chat.id ? 'active' : ''}`}
                       onClick={() => setSelectedChatId(chat.id)}
                     >
-                      <div className="chat-avatar">
+                      <div className="chat-avatar" style={{ background: getPastelColorForId(chat.id), boxShadow: 'none' }}>
                         {(() => {
                           if (chat.type === 'dm') {
                             const partnerName = getChatName(chat);
@@ -2607,6 +2645,9 @@ function App() {
                               return <img src={partnerUser.avatar} alt="avatar" style={{width:'100%', height:'100%', borderRadius:'50%', objectFit:'cover'}} />;
                             }
                             return partnerName ? partnerName[0].toUpperCase() : '👤';
+                          }
+                          if (chat.avatar) {
+                            return <img src={chat.avatar} alt="avatar" style={{width:'100%', height:'100%', borderRadius:'50%', objectFit:'cover'}} />;
                           }
                           return '👥';
                         })()}
@@ -2638,7 +2679,7 @@ function App() {
                     className="chat-item"
                     onClick={() => setShowProfile(u)}
                   >
-                    <div className="chat-avatar">
+                    <div className="chat-avatar" style={{ background: getPastelColorForId(u.username), boxShadow: 'none' }}>
                       {u.avatar ? (
                         <img src={u.avatar} alt={u.username} style={{width:'100%', height:'100%', borderRadius:'50%', objectFit:'cover'}} />
                       ) : (
@@ -2661,7 +2702,17 @@ function App() {
       {activeChat ? (
         <div className="main-chat-panel">
           {/* Chat Header */}
-          <div className="chat-header discord-style-header">
+          <div 
+            className="chat-header discord-style-header"
+            style={{ cursor: activeChat.type === 'group' ? 'pointer' : 'default' }}
+            onClick={() => {
+              if (activeChat.type === 'group') {
+                setEditGroupName(activeChat.name || '');
+                setEditGroupAvatar(activeChat.avatar || null);
+                setShowEditGroupModal(true);
+              }
+            }}
+          >
             <div className="discord-header-left">
               <span className="discord-channel-icon">
                 {activeChat.type === 'dm' ? (
@@ -3359,6 +3410,79 @@ function App() {
             </div>
             <div className="modal-actions" style={{ marginTop: '10px' }}>
               <button className="cancel-btn" onClick={() => setShowActivityPicker(false)}>Отмена</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Group Chat Edit Settings Modal */}
+      {showEditGroupModal && activeChat && (
+        <div className="modal-overlay" onClick={() => setShowEditGroupModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ width: '360px' }}>
+            <h2>Настройки группы</h2>
+            <div className="settings-group">
+              <label>Название группы</label>
+              <input 
+                type="text" 
+                value={editGroupName} 
+                onChange={(e) => setEditGroupName(e.target.value)} 
+                placeholder="Введите название..."
+                required
+              />
+            </div>
+            <div className="settings-group" style={{ marginTop: '15px' }}>
+              <label>Аватар группы</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginTop: '8px' }}>
+                <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: getPastelColorForId(activeChat.id), display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  {editGroupAvatar ? (
+                    <img src={editGroupAvatar} alt="group avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <span style={{ fontSize: '24px' }}>👥</span>
+                  )}
+                </div>
+                <input 
+                  type="file" 
+                  id="group-avatar-file-input" 
+                  accept="image/*" 
+                  style={{ display: 'none' }} 
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        setEditGroupAvatar(event.target.result);
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+                <button type="button" className="avatar-upload-btn" onClick={() => document.getElementById('group-avatar-file-input').click()}>
+                  Выбрать фото
+                </button>
+                {editGroupAvatar && (
+                  <button type="button" className="recording-cancel-btn" onClick={() => setEditGroupAvatar(null)}>Удалить</button>
+                )}
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="cancel-btn" onClick={() => setShowEditGroupModal(false)}>Отмена</button>
+              <button className="start-btn" onClick={() => {
+                if (!editGroupName.trim()) {
+                  alert("Название группы не может быть пустым!");
+                  return;
+                }
+                socket.emit('update_group_details', { 
+                  chatId: activeChat.id, 
+                  name: editGroupName, 
+                  avatar: editGroupAvatar 
+                }, (res) => {
+                  if (res.error) {
+                    alert(res.error);
+                  } else {
+                    setShowEditGroupModal(false);
+                  }
+                });
+              }}>Сохранить</button>
             </div>
           </div>
         </div>

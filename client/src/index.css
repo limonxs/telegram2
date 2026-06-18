@@ -2869,7 +2869,7 @@ input[type="text"]:focus, input[type="password"]:focus, .chat-input input:focus 
 }
 
 /* Buttons visual overhaul */
-button:not(.recording-cancel-btn):not(.attachment-preview-cancel-btn):not(.close-btn):not(.call-header-btn):not(.icon-btn):not(.ctrl-btn):not(.send-msg-btn):not(.discord-header-icon-btn):not(.nav-tab-btn):not(.drawer-menu-item) {
+button:not(.recording-cancel-btn):not(.attachment-preview-cancel-btn):not(.close-btn):not(.call-header-btn):not(.icon-btn):not(.ctrl-btn):not(.send-msg-btn):not(.discord-header-icon-btn):not(.nav-tab-btn):not(.drawer-menu-item):not(.settings-list-item-row) {
   background: var(--accent-gradient) !important;
   border-radius: 12px !important;
   font-weight: 700 !important;
@@ -2879,12 +2879,12 @@ button:not(.recording-cancel-btn):not(.attachment-preview-cancel-btn):not(.close
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
-button:not(.recording-cancel-btn):not(.attachment-preview-cancel-btn):not(.close-btn):not(.call-header-btn):not(.icon-btn):not(.ctrl-btn):not(.send-msg-btn):not(.discord-header-icon-btn):not(.nav-tab-btn):not(.drawer-menu-item):hover {
+button:not(.recording-cancel-btn):not(.attachment-preview-cancel-btn):not(.close-btn):not(.call-header-btn):not(.icon-btn):not(.ctrl-btn):not(.send-msg-btn):not(.discord-header-icon-btn):not(.nav-tab-btn):not(.drawer-menu-item):not(.settings-list-item-row):hover {
   transform: translateY(-1px) !important;
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4) !important;
 }
 
-button:not(.recording-cancel-btn):not(.attachment-preview-cancel-btn):not(.close-btn):not(.call-header-btn):not(.icon-btn):not(.ctrl-btn):not(.send-msg-btn):not(.discord-header-icon-btn):not(.nav-tab-btn):not(.drawer-menu-item):active {
+button:not(.recording-cancel-btn):not(.attachment-preview-cancel-btn):not(.close-btn):not(.call-header-btn):not(.icon-btn):not(.ctrl-btn):not(.send-msg-btn):not(.discord-header-icon-btn):not(.nav-tab-btn):not(.drawer-menu-item):not(.settings-list-item-row):active {
   transform: translateY(1px) !important;
 }
 

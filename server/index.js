@@ -414,6 +414,36 @@ io.on('connection', (socket) => {
     callback({ chatId });
   });
 
+  // ── Update Group Chat Details ──────────────────────────────────────
+  socket.on('update_group_details', ({ chatId, name, avatar }, callback) => {
+    if (typeof callback !== 'function') return;
+
+    const user = users.get(socket.id);
+    if (!user) return callback({ error: 'Not logged in' });
+
+    const chat = chats.get(chatId);
+    if (!chat) return callback({ error: 'Chat not found' });
+    if (chat.type !== 'group') return callback({ error: 'DMs cannot be renamed' });
+
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.trim().length === 0 || name.length > MAX_GROUP_NAME) {
+        return callback({ error: 'Invalid name' });
+      }
+      chat.name = name.trim();
+    }
+
+    if (avatar !== undefined) {
+      if (avatar !== null && (typeof avatar !== 'string' || avatar.length > 200000)) {
+        return callback({ error: 'Invalid avatar' });
+      }
+      chat.avatar = avatar;
+    }
+
+    scheduleSave();
+    io.emit('group_details_updated', { chatId, name: chat.name, avatar: chat.avatar });
+    callback({ success: true });
+  });
+
   // ── Chat Message (with rate limit + validation) ────────────────────
   socket.on('chat_message', ({ chatId, text, fileUrl, fileType, fileName }) => {
     if (!checkRateLimit(socket.id, 'message')) return;
