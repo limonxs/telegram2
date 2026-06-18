@@ -14,7 +14,8 @@
     "start": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && npm run electron:start\"",
     "pack": "npm run build && electron-builder --win",
     "pack:portable": "npm run build && electron-builder --win portable",
-    "pack:installer": "npm run build && electron-builder --win nsis"
+    "pack:installer": "npm run build && electron-builder --win nsis",
+    "publish": "npm run build && electron-builder --win --publish always"
   },
   "build": {
     "appId": "com.telecord.messenger",
