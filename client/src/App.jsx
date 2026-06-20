@@ -1,6 +1,52 @@
 import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
+import { PlayIcon, PauseIcon, MuteIcon, UnmuteIcon, DeafenedIcon, CameraIcon, ImageIcon, PaintIcon, EraserIcon, GiphyIcon, ScreenShareIcon, FullscreenIcon, MinimizeIcon, SearchIcon, CloseIcon, SettingsIcon, PhoneIcon, ProfileIcon, GroupIcon, MoonIcon, DoorIcon, PinIcon, FolderIcon, AttachIcon, SendIcon, MusicIcon, HourglassIcon, AlertIcon, GamingIcon, BellIcon, EyeIcon, GlobeIcon, MessageIcon, VideoIcon, SignalIcon, RecordIcon, MicIcon, ChessIcon, VoiceActiveIcon, GridIcon, EditIcon, TrashIcon } from './Icons';
+import FeedView from './FeedView';
 import './index.css';
+
+// --- File System Caching for Media ---
+const fsNode = window.require ? window.require('fs') : null;
+const pathNode = window.require ? window.require('path') : null;
+const BufferNode = window.require ? window.require('buffer').Buffer : null;
+
+function getCacheDir(username) {
+  if (!fsNode || !pathNode || !username) return null;
+  const basePath = pathNode.join(window.process.cwd(), 'cache');
+  if (!fsNode.existsSync(basePath)) fsNode.mkdirSync(basePath);
+  const userPath = pathNode.join(basePath, username);
+  if (!fsNode.existsSync(userPath)) fsNode.mkdirSync(userPath);
+  return userPath;
+}
+
+function getCachedFileUrl(username, mediaId) {
+  if (!fsNode || !pathNode || !username) return null;
+  const dir = getCacheDir(username);
+  if (!dir || !fsNode.existsSync(dir)) return null;
+  const files = fsNode.readdirSync(dir);
+  const file = files.find(f => f.startsWith(mediaId + '.'));
+  if (file) {
+    return 'file:///' + pathNode.join(dir, file).replace(/\\\\/g, '/');
+  }
+  return null;
+}
+
+function saveToCacheAsBinary(username, mediaId, dataUrl) {
+  if (!fsNode || !pathNode || !BufferNode || !dataUrl) return null;
+  try {
+    const matches = dataUrl.match(/^data:(.+);base64,(.+)$/);
+    if (!matches) return null;
+    let extMatch = matches[1].split('/')[1] || 'bin';
+    let ext = extMatch.split(';')[0];
+    if (ext.includes('+')) ext = ext.split('+')[0];
+    const p = pathNode.join(getCacheDir(username), `${mediaId}.${ext}`);
+    const buffer = BufferNode.from(matches[2], 'base64');
+    fsNode.writeFileSync(p, buffer);
+    return 'file:///' + p.replace(/\\\\/g, '/');
+  } catch (e) {
+    console.error('Failed to save binary to cache', e);
+    return null;
+  }
+}
 
 // Hashing function to assign a deterministic beautiful pastel color to chat placeholders
 const getPastelColorForId = (id) => {
@@ -374,11 +420,12 @@ function CustomVideoPlayer({ src }) {
   );
 }
 
-function VoiceMessagePlayer({ src, fileName, msgId }) {
+function VoiceMessagePlayer({ src, fileName, msgId, transcription }) {
   const audioRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [showTranscript, setShowTranscript] = useState(false);
 
   const getDefaultWaveform = (seedStr) => {
     const result = [];
@@ -497,10 +544,495 @@ function VoiceMessagePlayer({ src, fileName, msgId }) {
             );
           })}
         </div>
-        <div className="voice-meta-row">
-          <span>{isPlaying ? formatTime(currentTime) : formatTime(duration)}</span>
+        <div className="voice-meta-row" style={{ display: 'flex', alignItems: 'center' }}>
+            <span>{isPlaying ? formatTime(currentTime) : formatTime(duration)}</span>
+            {transcription && (
+              <button 
+                type="button" 
+                onClick={() => setShowTranscript(!showTranscript)}
+                style={{
+                  background: showTranscript ? 'var(--primary)' : 'rgba(255, 255, 255, 0.08)',
+                  color: showTranscript ? 'white' : 'var(--text-muted)',
+                  border: 'none',
+                  borderRadius: '12px',
+                  padding: '2px 8px',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  marginLeft: 'auto',
+                  transition: 'all 0.2s'
+                }}
+              >
+                текст
+              </button>
+            )}
+          </div>
+      </div>
+      {transcription && showTranscript && (
+        <div className="voice-transcription-text">
+          {transcription}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CustomAudioPlayer({ src }) {
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) audioRef.current.pause();
+    else audioRef.current.play().catch(e => console.error(e));
+  };
+
+  const handleTimeUpdate = () => {
+    if (!audioRef.current) return;
+    setCurrentTime(audioRef.current.currentTime);
+    if (duration > 0) setProgress((audioRef.current.currentTime / duration) * 100);
+  };
+
+  const handleLoadedMetadata = () => { if (audioRef.current) setDuration(audioRef.current.duration); };
+
+  const handleSeek = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percentage = Math.max(0, Math.min(1, x / rect.width));
+    if (audioRef.current && duration) {
+      const newTime = percentage * duration;
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+      setProgress(percentage * 100);
+    }
+  };
+
+  const formatTime = (time) => {
+    if (!time || isNaN(time)) return '0:00';
+    const mins = Math.floor(time / 60);
+    const secs = Math.floor(time % 60);
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onEnded = () => { setIsPlaying(false); setProgress(0); setCurrentTime(0); };
+    audio.addEventListener('play', onPlay);
+    audio.addEventListener('pause', onPause);
+    audio.addEventListener('ended', onEnded);
+    return () => {
+      audio.removeEventListener('play', onPlay);
+      audio.removeEventListener('pause', onPause);
+      audio.removeEventListener('ended', onEnded);
+    };
+  }, []);
+
+  if (!src) return null;
+
+  return (
+    <div className="custom-audio-player" style={{
+      display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.05)', 
+      padding: '8px 14px', borderRadius: '12px', border: '1px solid var(--border)', width: '100%', boxSizing: 'border-box'
+    }}>
+      <audio ref={audioRef} src={src} onTimeUpdate={handleTimeUpdate} onLoadedMetadata={handleLoadedMetadata} />
+      <button onClick={togglePlay} style={{
+        background: 'var(--primary)', border: 'none', color: '#fff', width: '32px', height: '32px', 
+        borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0
+      }}>
+        {isPlaying ? <PauseIcon size={14} /> : <PlayIcon size={14} style={{marginLeft: '2px'}} />}
+      </button>
+      <div style={{ fontSize: '12px', color: 'var(--text-muted)', width: '40px', textAlign: 'center', flexShrink: 0, fontFamily: 'monospace' }}>
+        {formatTime(currentTime)}
+      </div>
+      <div className="audio-progress-bar" onClick={handleSeek} style={{
+        flex: 1, height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', cursor: 'pointer', position: 'relative', overflow: 'hidden'
+      }}>
+        <div style={{
+          position: 'absolute', top: 0, left: 0, bottom: 0, width: `${progress}%`, background: 'var(--primary)', borderRadius: '3px', transition: 'width 0.1s linear'
+        }} />
+      </div>
+      <div style={{ fontSize: '12px', color: 'var(--text-muted)', width: '40px', textAlign: 'center', flexShrink: 0, fontFamily: 'monospace' }}>
+        {formatTime(duration)}
+      </div>
+    </div>
+  );
+}
+
+function GraffitiCanvas({ onCancel, onSend }) {
+  const canvasRef = useRef(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [brushColor, setBrushColor] = useState('#ffffff');
+  const [brushSize, setBrushSize] = useState(5);
+  const [isEraser, setIsEraser] = useState(false);
+  const pointsRef = useRef([]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+  }, []);
+
+  const getMousePos = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    let clientX = 0, clientY = 0;
+    if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; }
+    else { clientX = e.clientX; clientY = e.clientY; }
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  };
+
+  const startDrawing = (e) => {
+    const pos = getMousePos(e);
+    setIsDrawing(true);
+    pointsRef.current = [pos];
+    const ctx = canvasRef.current.getContext('2d');
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing) return;
+    const pos = getMousePos(e);
+    const points = pointsRef.current;
+    points.push(pos);
+    const ctx = canvasRef.current.getContext('2d');
+    if (isEraser) {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.strokeStyle = 'rgba(0,0,0,1)';
+      ctx.lineWidth = brushSize * 2.5;
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = brushColor;
+      ctx.lineWidth = brushSize;
+    }
+    if (points.length > 2) {
+      const xc = (points[points.length - 2].x + points[points.length - 1].x) / 2;
+      const yc = (points[points.length - 2].y + points[points.length - 1].y) / 2;
+      ctx.beginPath();
+      const prevXc = (points[points.length - 3].x + points[points.length - 2].x) / 2;
+      const prevYc = (points[points.length - 3].y + points[points.length - 2].y) / 2;
+      ctx.moveTo(prevXc, prevYc);
+      ctx.quadraticCurveTo(points[points.length - 2].x, points[points.length - 2].y, xc, yc);
+      ctx.stroke();
+    } else if (points.length === 2) {
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      ctx.lineTo(points[1].x, points[1].y);
+      ctx.stroke();
+    }
+  };
+
+  const stopDrawing = () => { setIsDrawing(false); pointsRef.current = []; };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const handleSend = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    onSend(canvas.toDataURL('image/png'));
+  };
+
+  const colors = ['#ffffff', '#ab70ff', '#39ff14', '#00f0ff', '#ff007f', '#ffff00'];
+  const sizes = [2, 5, 10, 15, 20];
+
+  return (
+    <div className="graffiti-modal-overlay" onClick={onCancel}>
+      <div className="graffiti-modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="graffiti-canvas-header">
+          <span className="graffiti-canvas-title"><PaintIcon size={16} style={{marginRight: "6px"}}/> Нарисовать граффити</span>
+        </div>
+        <div className="graffiti-canvas-container">
+          <canvas ref={canvasRef} width={500} height={320}
+            onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
+            onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
+          />
+        </div>
+        <div className="graffiti-toolbar">
+          <div className="graffiti-row">
+            <span className="graffiti-label">Цвет:</span>
+            <div className="graffiti-color-picker">
+              {colors.map((c) => (
+                <div key={c} className={`color-swatch ${brushColor === c && !isEraser ? 'active' : ''}`}
+                  style={{ backgroundColor: c }} onClick={() => { setBrushColor(c); setIsEraser(false); }} />
+              ))}
+            </div>
+            <button type="button" className={`eraser-btn ${isEraser ? 'active' : ''}`} onClick={() => setIsEraser(true)}>
+              <EraserIcon size={14} style={{marginRight: "4px"}}/> Ластик
+            </button>
+          </div>
+          <div className="graffiti-row">
+            <span className="graffiti-label">Толщина:</span>
+            <div className="brush-sizes">
+              {sizes.map((s) => (
+                <div key={s} className={`brush-size-dot-wrapper ${brushSize === s ? 'active' : ''}`} onClick={() => setBrushSize(s)}>
+                  <div className="brush-size-dot" style={{ width: `${s}px`, height: `${s}px` }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="graffiti-actions">
+          <button type="button" className="graffiti-clear-btn" onClick={clearCanvas}>Очистить</button>
+          <button type="button" className="graffiti-cancel-btn" onClick={onCancel}>Отмена</button>
+          <button type="button" className="graffiti-send-btn" onClick={handleSend}>Отправить</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function GiphySearchModal({ onClose, onSelect }) {
+  const [query, setQuery] = useState('');
+  const [gifs, setGifs] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchGifs = async (searchQuery) => {
+    setLoading(true);
+    try {
+      const apiKey = 'LIVDSRZULELA';
+      const url = searchQuery.trim() 
+        ? `https://g.tenor.com/v1/search?key=${apiKey}&q=${encodeURIComponent(searchQuery)}&limit=15`
+        : `https://g.tenor.com/v1/trending?key=${apiKey}&limit=15`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data && data.results) setGifs(data.results.map(item => item.media[0].gif.url));
+    } catch (e) {
+      console.error('Failed to fetch GIFs:', e);
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchGifs(''); }, []);
+
+  return (
+    <div className="graffiti-modal-overlay" onClick={onClose}>
+      <div className="graffiti-modal-content" style={{ width: '400px', height: '500px', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+        <div className="graffiti-canvas-header">
+          <span className="graffiti-canvas-title"><GiphyIcon size={16} style={{marginRight: "6px"}}/> Поиск GIF (Tenor)</span>
+          <button className="close-profile-btn" style={{ margin: 0, padding: '4px 8px', fontSize: '12px' }} onClick={onClose}><CloseIcon size={12} /></button>
+        </div>
+        <input type="text" style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', background: 'var(--bg-dark)', border: '1px solid var(--border)', color: 'white', outline: 'none', margin: '10px 0' }}
+          placeholder="Поиск гифок..." value={query} onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') fetchGifs(query); }}
+        />
+        <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', paddingRight: '4px' }}>
+          {loading ? (
+            <div style={{ gridColumn: 'span 2', textAlign: 'center', color: 'var(--text-muted)', paddingTop: '40px' }}>Загрузка...</div>
+          ) : gifs.length === 0 ? (
+            <div style={{ gridColumn: 'span 2', textAlign: 'center', color: 'var(--text-muted)', paddingTop: '40px' }}>Ничего не найдено</div>
+          ) : gifs.map((url, idx) => (
+            <img key={idx} src={url} alt="gif"
+              style={{ width: '100%', height: '120px', objectFit: 'cover', borderRadius: '8px', cursor: 'pointer', border: '1px solid transparent', transition: 'border-color 0.2s' }}
+              onClick={() => onSelect(url)}
+              onMouseOver={e => e.target.style.borderColor = '#8a2be2'}
+              onMouseOut={e => e.target.style.borderColor = 'transparent'}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileWall({ socket, currentUser, targetUser, onlineUsers }) {
+  const [posts, setPosts] = useState([]);
+  const [targetProfile, setTargetProfile] = useState({ aboutText: '', audioUrl: null });
+  const [profileLoading, setProfileLoading] = useState(true);
+
+  const fetchWallMedia = (postId) => {
+    if (!socket) return;
+    socket.emit('request_media', { type: 'wall', id: postId }, (res) => {
+      if (res && res.success && res.dataUrl) {
+        const cached = saveToCacheAsBinary(currentUser, postId, res.dataUrl);
+        const url = cached || res.dataUrl;
+        setPosts(prev => prev.map(p => p.id === postId ? { ...p, mediaUrl: url } : p));
+      }
+    });
+  };
+
+  useEffect(() => {
+    if (!socket || !targetUser) return;
+    socket.emit('get_user_profile', { username: targetUser }, (res) => {
+      if (res && res.success && res.profile) setTargetProfile(res.profile);
+      setProfileLoading(false);
+    });
+  }, [socket, targetUser]);
+
+  const [inputText, setInputText] = useState('');
+  const [showGraffiti, setShowGraffiti] = useState(false);
+  const [showGiphy, setShowGiphy] = useState(false);
+  const [attachedImage, setAttachedImage] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!socket || !targetUser) return;
+    socket.emit('get_wall_posts', { targetUsername: targetUser }, (res) => {
+      if (res && res.success) setPosts(res.posts.map(p => ({ ...p, mediaUrl: p.mediaUrl || (p.hasMedia ? getCachedFileUrl(currentUser, p.id) : null) })));
+    });
+  }, [socket, targetUser]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const handleNewPost = (post) => {
+      const p = { ...post, mediaUrl: post.mediaUrl || (post.hasMedia ? getCachedFileUrl(currentUser, post.id) : null) };
+      if (p.targetUser === targetUser) {
+        setPosts((prev) => { if (prev.some((pp) => pp.id === p.id)) return prev; return [p, ...prev]; });
+      }
+    };
+    socket.on('wall_post_created', handleNewPost);
+    return () => { socket.off('wall_post_created', handleNewPost); };
+  }, [socket, targetUser]);
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { alert('Файл слишком большой. Макс 10 МБ.'); return; }
+    const reader = new FileReader();
+    reader.onload = (event) => { setAttachedImage(event.target.result); };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleSendText = async (e) => {
+    if (e) e.preventDefault();
+    if (!inputText.trim() && !attachedImage) return;
+    if (submitting) return;
+    setSubmitting(true);
+    const emitPost = (content, mediaType) => {
+      return new Promise((resolve) => {
+        socket.emit('create_wall_post', { 
+          targetUsername: targetUser, text: mediaType === 'text' ? content : '', 
+          mediaType: mediaType === 'text' ? null : mediaType, mediaUrl: mediaType !== 'text' ? content : null 
+        }, (res) => {
+          if (res && res.success) { setPosts((prev) => { if (prev.some((p) => p.id === res.post.id)) return prev; return [res.post, ...prev]; }); resolve(true); }
+          else { alert(res?.error || `Не удалось отправить ${mediaType}`); resolve(false); }
+        });
+      });
+    };
+    let success = true;
+    if (attachedImage) { const r = await emitPost(attachedImage, 'image'); if (r) setAttachedImage(null); else success = false; }
+    if (success && inputText.trim()) { const r = await emitPost(inputText.trim(), 'text'); if (r) setInputText(''); }
+    setSubmitting(false);
+  };
+
+  const handleSendGraffiti = (base64Image) => {
+    setShowGraffiti(false); setSubmitting(true);
+    socket.emit('create_wall_post', { targetUsername: targetUser, text: '', mediaUrl: base64Image, mediaType: 'graffiti' }, (res) => {
+      setSubmitting(false);
+      if (res && res.success) setPosts((prev) => { if (prev.some((p) => p.id === res.post.id)) return prev; return [res.post, ...prev]; });
+      else alert(res?.error || 'Не удалось отправить граффити');
+    });
+  };
+
+  const handleSendGif = (gifUrl) => {
+    setShowGiphy(false); setSubmitting(true);
+    socket.emit('create_wall_post', { targetUsername: targetUser, text: '', mediaUrl: gifUrl, mediaType: 'gif' }, (res) => {
+      setSubmitting(false);
+      if (res && res.success) setPosts((prev) => { if (prev.some((p) => p.id === res.post.id)) return prev; return [res.post, ...prev]; });
+      else alert(res?.error || 'Не удалось отправить GIF');
+    });
+  };
+
+  const formatWallDate = (timestamp) => {
+    const d = new Date(timestamp); const now = new Date();
+    const isToday = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return isToday ? `Сегодня в ${timeStr}` : `${d.toLocaleDateString()} в ${timeStr}`;
+  };
+
+  return (
+    <div className="profile-wall">
+      <div className="wall-header">
+        <div className="wall-header-title">
+          <span>Стена профиля</span>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            ({posts.length} {posts.length === 1 ? 'запись' : [2, 3, 4].includes(posts.length % 10) && ![12, 13, 14].includes(posts.length % 100) ? 'записи' : 'записей'})
+          </span>
+        </div>
+      </div>
+      {!profileLoading && (targetProfile.aboutText || targetProfile.audioUrl) && (
+        <div className="wall-profile-info" style={{ padding: '16px', background: 'rgba(255, 255, 255, 0.02)', borderBottom: '1px solid var(--border)' }}>
+          {targetProfile.aboutText && (
+            <div style={{ marginBottom: targetProfile.audioUrl ? '16px' : '0' }}>
+              <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--primary)', marginBottom: '4px', textTransform: 'uppercase' }}>О себе</div>
+              <div style={{ fontSize: '14px', color: 'var(--text-main)', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>{targetProfile.aboutText}</div>
+            </div>
+          )}
+          {targetProfile.audioUrl && (
+            <div className="wall-audio-player" style={{ background: 'var(--bg-main)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--primary)', marginBottom: '8px', textTransform: 'uppercase' }}>Аудио профиля</div>
+              <CustomAudioPlayer src={targetProfile.audioUrl} />
+            </div>
+          )}
+        </div>
+      )}
+      <div className="wall-feed">
+        {posts.length === 0 ? (
+          <div className="wall-empty-state"><span className="wall-empty-icon"><MessageIcon size={48} /></span></div>
+        ) : posts.map((post) => {
+          const authorColor = getPastelColorForId(post.author);
+          return (
+            <div key={post.id} className="wall-post">
+              <div className="wall-post-header">
+                <div className="wall-post-avatar" style={{ backgroundColor: authorColor }}>{post.author[0].toUpperCase()}</div>
+                <div className="wall-post-meta">
+                  <span className="wall-post-author">{onlineUsers.find(u => u.username === post.author)?.displayName || post.author}</span>
+                  <span className="wall-post-time">{formatWallDate(post.timestamp)}</span>
+                </div>
+              </div>
+              <div className="wall-post-body">
+                {post.hasMedia && !post.mediaUrl ? (
+                  <div className="wall-post-graffiti placeholder" onClick={() => fetchWallMedia(post.id)} style={{ cursor: 'pointer', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px', border: '1px dashed var(--primary)', borderRadius: '12px' }}>
+                     <span style={{ color: 'var(--primary)' }}>Кликните для загрузки медиа</span>
+                  </div>
+                ) : post.mediaType === 'graffiti' || post.mediaType === 'image' ? (
+                  <div className="wall-post-graffiti"><img src={post.mediaUrl} alt="Attachment" /></div>
+                ) : post.mediaType === 'gif' ? (
+                  <div className="wall-post-graffiti"><img src={post.mediaUrl} alt="GIF" style={{ maxHeight: '180px', objectFit: 'contain' }} /></div>
+                ) : post.text}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {attachedImage && (
+        <div style={{ padding: '8px 24px', display: 'flex', gap: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.05)', background: 'rgba(20, 20, 28, 0.2)' }}>
+          <div style={{ position: 'relative', width: '60px', height: '60px', borderRadius: '6px', overflow: 'hidden', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+            <img src={attachedImage} alt="attachment" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <button type="button" onClick={() => setAttachedImage(null)} style={{ position: 'absolute', top: '2px', right: '2px', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(0,0,0,0.6)', border: 'none', color: 'white', fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+              <CloseIcon size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+      <form className="wall-input-section" onSubmit={handleSendText}>
+        <div className="wall-input-container">
+          <textarea className="wall-textarea" placeholder="Написать что-нибудь..." value={inputText} onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendText(); } }} />
+          <div className="wall-input-actions">
+            <button type="button" className="graffiti-btn" title="Прикрепить фото" onClick={() => fileInputRef.current?.click()}><CameraIcon size={20} /></button>
+            <input type="file" ref={fileInputRef} accept="image/*" style={{ display: 'none' }} onChange={handleImageChange} />
+            <button type="button" className="graffiti-btn" title="Поиск GIF" onClick={() => setShowGiphy(true)}><GiphyIcon size={20} /></button>
+            <button type="button" className="graffiti-btn" title="Нарисовать граффити" onClick={() => setShowGraffiti(true)}><PaintIcon size={20} /></button>
+            <button type="submit" className="wall-send-btn" disabled={(!inputText.trim() && !attachedImage) || submitting}>Отправить</button>
+          </div>
+        </div>
+      </form>
+      {showGraffiti && <GraffitiCanvas onCancel={() => setShowGraffiti(false)} onSend={handleSendGraffiti} />}
+      {showGiphy && <GiphySearchModal onClose={() => setShowGiphy(false)} onSelect={handleSendGif} />}
     </div>
   );
 }
@@ -825,6 +1357,15 @@ function App() {
   const [connected, setConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('idle'); // 'idle' | 'connecting' | 'connected' | 'error'
   const [connectionError, setConnectionError] = useState('');
+
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   
   const [userAvatar, setUserAvatar] = useState(localStorage.getItem('savedAvatar') || null);
   const [isChangingAccount, setIsChangingAccount] = useState(false);
@@ -1084,6 +1625,20 @@ function App() {
   const webcamSendersRef = useRef({}); // socketId -> RTCRtpSender (for webcam video)
   const socketRef = useRef(null);
 
+  const requestMedia = (type, id, chatId) => {
+    const s = socketRef.current;
+    if (!s) return;
+    s.emit('request_media', { type, id, chatId }, (res) => {
+      if (res && res.success && res.dataUrl) {
+        if (type === 'chat') {
+           const decUrl = decryptMessage(res.dataUrl, chatId);
+           const cached = saveToCacheAsBinary(username, id, decUrl);
+           setChats(prev => prev.map(c => c.id === chatId ? { ...c, messages: c.messages.map(m => m.id === id ? { ...m, fileUrl: cached || decUrl } : m) } : c));
+        }
+      }
+    });
+  };
+
   // Web Audio Synth Chimes
   const playConnectSound = () => {
     if (localStorage.getItem('soundConnect') === 'false') return;
@@ -1306,14 +1861,8 @@ function App() {
   }, [socket]);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('savedUsername');
-    const savedIp = localStorage.getItem('savedServerIp');
-    if (savedUser) {
-      setUsername(savedUser);
-    }
-    if (savedIp) {
-      setServerIp(savedIp);
-    }
+    // Automatically trigger offline demo mode on mount
+    enterDemoMode();
   }, []);
 
   useEffect(() => {
@@ -1547,7 +2096,8 @@ function App() {
             messages: (chat.messages || []).map(msg => ({
               ...msg,
               text: decryptMessage(msg.text, chat.id),
-              fileUrl: msg.fileUrl ? decryptMessage(msg.fileUrl, chat.id) : null,
+              fileUrl: msg.fileUrl ? decryptMessage(msg.fileUrl, chat.id) : (msg.hasMedia ? getCachedFileUrl(nameToUse, msg.id) : null),
+              hasMedia: msg.hasMedia,
               fileName: msg.fileName ? decryptMessage(msg.fileName, chat.id) : null
             }))
           }));
@@ -1594,7 +2144,8 @@ function App() {
       const decryptedMsg = {
         ...message,
         text: decryptMessage(message.text, chatId),
-        fileUrl: message.fileUrl ? decryptMessage(message.fileUrl, chatId) : null,
+        fileUrl: message.fileUrl ? decryptMessage(message.fileUrl, chatId) : (message.hasMedia ? getCachedFileUrl(nameToUse, message.id) : null),
+        hasMedia: message.hasMedia,
         fileName: message.fileName ? decryptMessage(message.fileName, chatId) : null
       };
       setChats(prev => prev.map(c => c.id === chatId ? { ...c, messages: [...c.messages, decryptedMsg] } : c));
@@ -1732,6 +2283,467 @@ function App() {
     });
 
     setSocket(newSocket);
+  };
+
+  function enterDemoMode() {
+    const localSavedUser = localStorage.getItem('savedUsername');
+    const finalUsername = username.trim() || localSavedUser || 'Пользователь';
+    setUsername(finalUsername);
+    localStorage.setItem('savedUsername', finalUsername);
+    localStorage.setItem('savedServerIp', 'offline-demo');
+    setServerIp('offline-demo');
+
+    setConnectionStatus('connecting');
+    setConnectionError('');
+
+    const mockState = {
+      chats: [
+        {
+          id: 'global',
+          name: 'Общий чат',
+          type: 'group',
+          avatar: null,
+          users: [finalUsername, 'Ivan', 'Maria'],
+          messages: [
+            { id: 'm1', sender: 'Ivan', text: 'Всем привет! Как вам мобильная версия?', timestamp: Date.now() - 600000 },
+            { id: 'm2', sender: 'Maria', text: 'Супер! Дизайн очень удобный.', timestamp: Date.now() - 300000 }
+          ]
+        },
+        {
+          id: 'chat-ivan',
+          name: 'Ivan',
+          type: 'dm',
+          avatar: null,
+          users: [finalUsername, 'Ivan'],
+          messages: [
+            { id: 'm3', sender: 'Ivan', text: 'Привет! Я тут тестирую оффлайн режим.', timestamp: Date.now() - 120000 },
+            { id: 'm4', sender: finalUsername, text: 'Да, я тоже!', timestamp: Date.now() - 60000 }
+          ]
+        },
+        {
+          id: 'chat-maria',
+          name: 'Maria',
+          type: 'dm',
+          avatar: null,
+          users: [finalUsername, 'Maria'],
+          messages: [
+            { id: 'm5', sender: 'Maria', text: 'Привет! Напиши мне что-нибудь.', timestamp: Date.now() - 500000 }
+          ]
+        }
+      ],
+      feedPosts: [
+        {
+          id: 'post-1',
+          author: 'Ivan',
+          text: 'Оффлайн-режим работает отлично! 🎉 Рад приветствовать всех в мобильной версии Telecord!',
+          timestamp: Date.now() - 7200000,
+          likes: ['Maria'],
+          comments: [
+            { id: 'c1', author: 'Maria', text: 'Да, выглядит потрясающе!', timestamp: Date.now() - 3600000 }
+          ],
+          hasMedia: false,
+          mediaUrl: null,
+          mediaType: null
+        }
+      ],
+      wallPosts: {
+        'Ivan': [
+          { id: 'wp1', targetUser: 'Ivan', author: 'Maria', text: 'С возвращением! Рисуй граффити на моей стене!', timestamp: Date.now() - 10000000 }
+        ],
+        'Maria': [
+          { id: 'wp2', targetUser: 'Maria', author: 'Ivan', text: 'Тут можно рисовать!', timestamp: Date.now() - 9000000 }
+        ]
+      },
+      profiles: {
+        'Ivan': { aboutText: 'Разработчик Telecord. Люблю чистый код.', audioUrl: null },
+        'Maria': { aboutText: 'Дизайнер интерфейсов. Делаю мир красивее.', audioUrl: null }
+      }
+    };
+
+    mockState.profiles[finalUsername] = { aboutText: 'Это мой оффлайн-профиль', audioUrl: null };
+    mockState.wallPosts[finalUsername] = [];
+
+    const mockSocket = {
+      connected: true,
+      _listeners: {},
+      
+      on(event, callback) {
+        this._listeners[event] = this._listeners[event] || [];
+        this._listeners[event].push(callback);
+      },
+      
+      off(event, callback) {
+        if (!this._listeners[event]) return;
+        if (!callback) {
+          delete this._listeners[event];
+        } else {
+          this._listeners[event] = this._listeners[event].filter(cb => cb !== callback);
+        }
+      },
+      
+      trigger(event, data) {
+        if (this._listeners[event]) {
+          this._listeners[event].forEach(cb => {
+            try {
+              cb(data);
+            } catch (e) {
+              console.error('Error in mock event listener:', event, e);
+            }
+          });
+        }
+      },
+      
+      emit(event, ...args) {
+        console.log('MockSocket emit:', event, args);
+        
+        if (event === 'ping_check') {
+          const cb = args[args.length - 1];
+          if (typeof cb === 'function') cb();
+          return;
+        }
+
+        if (event === 'get_feed_posts') {
+          const cb = args[args.length - 1];
+          if (typeof cb === 'function') {
+            cb({ success: true, posts: [...mockState.feedPosts] });
+          }
+          return;
+        }
+
+        if (event === 'create_feed_post') {
+          const data = args[0];
+          const cb = args[args.length - 1];
+          const newPost = {
+            id: 'post-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+            author: finalUsername,
+            text: data.text,
+            timestamp: Date.now(),
+            likes: [],
+            comments: [],
+            hasMedia: !!data.mediaUrl,
+            mediaUrl: data.mediaUrl,
+            mediaType: data.mediaType
+          };
+          mockState.feedPosts.unshift(newPost);
+          if (typeof cb === 'function') cb({ success: true, post: newPost });
+          this.trigger('feed_post_created', newPost);
+          return;
+        }
+
+        if (event === 'like_feed_post') {
+          const { postId } = args[0];
+          const post = mockState.feedPosts.find(p => p.id === postId);
+          if (post) {
+            if (post.likes.includes(finalUsername)) {
+              post.likes = post.likes.filter(u => u !== finalUsername);
+            } else {
+              post.likes.push(finalUsername);
+            }
+            this.trigger('feed_post_updated', post);
+          }
+          return;
+        }
+
+        if (event === 'add_feed_comment') {
+          const { postId, text } = args[0];
+          const cb = args[args.length - 1];
+          const post = mockState.feedPosts.find(p => p.id === postId);
+          if (post) {
+            const newComment = {
+              id: 'comment-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+              author: finalUsername,
+              text,
+              timestamp: Date.now()
+            };
+            post.comments.push(newComment);
+            if (typeof cb === 'function') cb({ success: true, comment: newComment });
+            this.trigger('feed_post_updated', post);
+          }
+          return;
+        }
+
+        if (event === 'get_user_profile') {
+          const target = args[0].username;
+          const cb = args[args.length - 1];
+          const profile = mockState.profiles[target] || { aboutText: 'Пользователь Telecord', audioUrl: null };
+          if (typeof cb === 'function') cb({ success: true, profile });
+          return;
+        }
+
+        if (event === 'get_wall_posts') {
+          const target = args[0].targetUsername;
+          const cb = args[args.length - 1];
+          const posts = mockState.wallPosts[target] || [];
+          if (typeof cb === 'function') cb({ success: true, posts });
+          return;
+        }
+
+        if (event === 'create_wall_post') {
+          const data = args[0];
+          const cb = args[args.length - 1];
+          const newPost = {
+            id: 'wp-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+            targetUser: data.targetUsername,
+            author: finalUsername,
+            text: data.text,
+            mediaType: data.mediaType,
+            mediaUrl: data.mediaUrl,
+            hasMedia: !!data.mediaUrl,
+            timestamp: Date.now()
+          };
+          mockState.wallPosts[data.targetUsername] = mockState.wallPosts[data.targetUsername] || [];
+          mockState.wallPosts[data.targetUsername].unshift(newPost);
+          if (typeof cb === 'function') cb({ success: true, post: newPost });
+          this.trigger('wall_post_created', newPost);
+          return;
+        }
+
+        if (event === 'get_or_create_dm') {
+          const target = args[0].targetUsername;
+          const cb = args[args.length - 1];
+          const existingChat = mockState.chats.find(c => c.type === 'dm' && c.users.includes(target));
+          const chatId = existingChat ? existingChat.id : 'chat-' + target.toLowerCase();
+          if (!existingChat) {
+            const newChat = {
+              id: chatId,
+              name: target,
+              type: 'dm',
+              avatar: null,
+              users: [finalUsername, target],
+              messages: []
+            };
+            mockState.chats.push(newChat);
+            setChats(prev => [...prev, newChat]);
+          }
+          if (typeof cb === 'function') cb({ chatId });
+          return;
+        }
+
+        if (event === 'create_group') {
+          const name = args[0].name;
+          const cb = args[args.length - 1];
+          const chatId = 'chat-group-' + Date.now();
+          const newChat = {
+            id: chatId,
+            name: name,
+            type: 'group',
+            avatar: null,
+            users: [finalUsername, 'Ivan', 'Maria'],
+            messages: [
+              { id: 'gm1', sender: 'System', text: `Группа "${name}" создана пользователем ${finalUsername}`, timestamp: Date.now() }
+            ]
+          };
+          mockState.chats.push(newChat);
+          setChats(prev => [...prev, newChat]);
+          if (typeof cb === 'function') cb({ chatId });
+          return;
+        }
+
+        if (event === 'update_group_details') {
+          const data = args[0];
+          const cb = args[args.length - 1];
+          setChats(prev => prev.map(c => c.id === data.chatId ? { ...c, name: data.name, avatar: data.avatar } : c));
+          setActiveChat(prev => (prev && prev.id === data.chatId) ? { ...prev, name: data.name, avatar: data.avatar } : prev);
+          if (typeof cb === 'function') cb({ success: true });
+          return;
+        }
+
+        if (event === 'request_media') {
+          const cb = args[args.length - 1];
+          if (typeof cb === 'function') {
+            cb({ success: false });
+          }
+          return;
+        }
+
+        if (event === 'chat_message') {
+          const data = args[0];
+          const decryptedText = decryptMessage(data.text, data.chatId);
+          const decryptedFileUrl = data.fileUrl ? decryptMessage(data.fileUrl, data.chatId) : null;
+          const decryptedFileName = data.fileName ? decryptMessage(data.fileName, data.chatId) : null;
+          
+          const clientMsg = {
+            id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+            sender: finalUsername,
+            text: data.text,
+            fileUrl: data.fileUrl,
+            fileType: data.fileType,
+            fileName: data.fileName,
+            hasMedia: !!data.fileUrl,
+            timestamp: Date.now()
+          };
+
+          this.trigger('chat_message', {
+            chatId: data.chatId,
+            message: clientMsg
+          });
+
+          setChats(prev => prev.map(c => {
+            if (c.id === data.chatId) {
+              const decryptedMsg = {
+                ...clientMsg,
+                text: decryptedText,
+                fileUrl: decryptedFileUrl,
+                fileName: decryptedFileName,
+                hasMedia: clientMsg.hasMedia
+              };
+              return { ...c, messages: [...c.messages, decryptedMsg] };
+            }
+            return c;
+          }));
+
+          if (data.chatId === 'chat-ivan' || data.chatId === 'chat-maria') {
+            const partner = data.chatId === 'chat-ivan' ? 'Ivan' : 'Maria';
+            setTimeout(() => {
+              let replyText = '';
+              if (partner === 'Ivan') {
+                const replies = [
+                  'Круто! Я бот-Иван в оффлайн режиме.',
+                  'Тут всё работает локально на твоем устройстве без интернета.',
+                  'Как тебе новый мобильный дизайн?',
+                  'Попробуй отправить граффити или загрузить картинку!',
+                  'Также можешь заглянуть во вкладку "Лента" и написать пост!'
+                ];
+                replyText = replies[Math.floor(Math.random() * replies.length)];
+              } else {
+                const replies = [
+                  'Привет! Я Мария. Как тебе оффлайн-версия?',
+                  'Можешь зайти в мой профиль (кликни на мой аватар) и оставить запись на стене!',
+                  'Все отправленные сообщения сохраняются прямо в приложении во время сессии.',
+                  'Напиши еще что-нибудь, я отвечу!',
+                  'Дизайн полностью адаптирован под твой телефон.'
+                ];
+                replyText = replies[Math.floor(Math.random() * replies.length)];
+              }
+
+              const encryptedReply = encryptMessage(replyText, data.chatId);
+              const botMsg = {
+                id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                sender: partner,
+                text: encryptedReply,
+                fileUrl: null,
+                fileType: null,
+                fileName: null,
+                hasMedia: false,
+                timestamp: Date.now()
+              };
+
+              this.trigger('chat_message', {
+                chatId: data.chatId,
+                message: botMsg
+              });
+
+              setChats(prev => prev.map(c => {
+                if (c.id === data.chatId) {
+                  return {
+                    ...c,
+                    messages: [
+                      ...c.messages,
+                      {
+                        ...botMsg,
+                        text: replyText,
+                        fileUrl: null,
+                        fileName: null
+                      }
+                    ]
+                  };
+                }
+                return c;
+              }));
+            }, 1000 + Math.random() * 1000);
+          } else if (data.chatId === 'global') {
+            setTimeout(() => {
+              const partners = ['Ivan', 'Maria'];
+              const sender = partners[Math.floor(Math.random() * partners.length)];
+              const replies = [
+                'Всем привет в общем чате!',
+                'Оффлайн версия работает супер.',
+                'Да, у меня тоже всё летает!',
+                'Проверяю отправку сообщений в группу.'
+              ];
+              const replyText = replies[Math.floor(Math.random() * replies.length)];
+
+              const encryptedReply = encryptMessage(replyText, data.chatId);
+              const botMsg = {
+                id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                sender: sender,
+                text: encryptedReply,
+                fileUrl: null,
+                fileType: null,
+                fileName: null,
+                hasMedia: false,
+                timestamp: Date.now()
+              };
+
+              this.trigger('chat_message', {
+                chatId: data.chatId,
+                message: botMsg
+              });
+
+              setChats(prev => prev.map(c => {
+                if (c.id === data.chatId) {
+                  return {
+                    ...c,
+                    messages: [
+                      ...c.messages,
+                      {
+                        ...botMsg,
+                        text: replyText,
+                        fileUrl: null,
+                        fileName: null
+                      }
+                    ]
+                  };
+                }
+                return c;
+              }));
+            }, 1500 + Math.random() * 1000);
+          }
+          return;
+        }
+
+        if (event === 'initiate_call') {
+          const { chatId, targetUsername } = args[0];
+          setTimeout(() => {
+            this.trigger('call_accepted', { chatId, answererUsername: targetUsername });
+          }, 3000);
+          return;
+        }
+
+        if (event === 'join_voice') {
+          setTimeout(() => {
+            this.trigger('voice_users', [
+              { id: 'user-ivan', username: 'Ivan', isMuted: false, isDeafened: false },
+              { id: 'user-maria', username: 'Maria', isMuted: true, isDeafened: false }
+            ]);
+          }, 1000);
+          return;
+        }
+      },
+      
+      disconnect() {
+        console.log('MockSocket disconnect');
+        this.connected = false;
+        setConnected(false);
+        setConnectionStatus('idle');
+      }
+    };
+
+    socketRef.current = mockSocket;
+    setSocket(mockSocket);
+
+    setTimeout(() => {
+      setConnected(true);
+      setConnectionStatus('connected');
+      setChats(mockState.chats);
+      
+      const uniqueOnlineUsers = [
+        { username: finalUsername, socketId: 'self', avatar: userAvatar },
+        { username: 'Ivan', socketId: 'user-ivan', avatar: null },
+        { username: 'Maria', socketId: 'user-maria', avatar: null }
+      ];
+      setOnlineUsers(uniqueOnlineUsers);
+    }, 600);
   };
 
   const createPeerConnection = async (targetId, isOffer, socketInstance) => {
@@ -2404,6 +3416,7 @@ function App() {
                 />
               </div>
               <button type="submit">Подключиться</button>
+              <button type="button" onClick={enterDemoMode} className="demo-btn">Войти в демо-режим (Офлайн)</button>
               <button type="button" style={{ background: 'transparent', color: 'var(--text-muted)', fontSize: '13px', padding: '5px', border: 'none', cursor: 'pointer', fontWeight: 'normal', textDecoration: 'underline' }} onClick={() => setIsChangingAccount(true)}>
                 Сменить аккаунт
               </button>
@@ -2425,6 +3438,7 @@ function App() {
                 />
               </div>
               <button type="submit">Подключиться</button>
+              <button type="button" onClick={enterDemoMode} className="demo-btn">Войти в демо-режим (Офлайн)</button>
               {savedUser && (
                 <button type="button" style={{ background: 'transparent', color: 'var(--text-muted)', fontSize: '13px', padding: '5px', border: 'none', cursor: 'pointer', fontWeight: 'normal', textDecoration: 'underline' }} onClick={() => setIsChangingAccount(false)}>
                   Вернуться
@@ -2558,170 +3572,248 @@ function App() {
         </div>
       )}
 
-      {/* Sidebar Panel */}
-      <div className="sidebar" style={{ display: 'flex', flexDirection: 'row', width: '340px' }}>
-        {/* Left Narrow Tabs Panel */}
-        <div className="sidebar-nav-tabs">
-          <button className="nav-tab-btn hamburger-btn" onClick={() => setShowDrawer(true)} title="Меню">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-          </button>
-          
-          <button 
-            className={`nav-tab-btn ${activeTab === 'chats' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('chats')} 
-            title="Все чаты"
-          >
-            <div className="tab-icon-wrapper">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-              {chats.length > 0 && <span className="tab-badge">{chats.length}</span>}
-            </div>
-            <span className="nav-tab-label">Чаты</span>
-          </button>
-          
-          <button 
-            className={`nav-tab-btn ${activeTab === 'contacts' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('contacts')} 
-            title="В сети"
-          >
-            <div className="tab-icon-wrapper">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-              {onlineUsers.length > 0 && <span className="tab-badge">{onlineUsers.length}</span>}
-            </div>
-            <span className="nav-tab-label">В сети</span>
-          </button>
-          
-          <button className="nav-tab-btn" onClick={() => setShowSettings(true)} title="Настройки">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-            <span className="nav-tab-label">Настройки</span>
-          </button>
-          
-          <button className="nav-tab-btn" onClick={() => setShowProfile({ username, avatar: userAvatar, self: true })} title="Мой профиль" style={{ marginTop: 'auto', marginBottom: '15px' }}>
-            <div className="tab-avatar-wrapper">
-              {userAvatar ? (
-                <img src={userAvatar} alt="me" className="nav-tab-avatar" />
-              ) : (
-                <div className="nav-tab-avatar-text">{username ? username[0].toUpperCase() : '👤'}</div>
-              )}
-            </div>
-            <span className="nav-tab-label">Профиль</span>
-          </button>
-        </div>
-
-        {/* Right Sidebar Body */}
-        <div className="sidebar-main-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Global Search and Chat Controls */}
-          <div className="sidebar-search">
-            <input 
-              type="text" 
-              placeholder="Поиск..." 
-              value={searchQuery} 
-              onChange={e => setSearchQuery(e.target.value)} 
-              style={{ borderRadius: '8px' }}
-            />
-            <button className="create-group-btn" onClick={() => setShowCreateGroup(true)} title="Создать группу" style={{ borderRadius: '8px', minWidth: '32px' }}>+</button>
+      {/* Left Narrow Tabs Panel */}
+      <div className="sidebar-nav-tabs">
+        <button className="nav-tab-btn hamburger-btn" onClick={() => setShowDrawer(true)} title="Меню">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+        
+        <button 
+          className={`nav-tab-btn ${activeTab === 'chats' ? 'active' : ''}`} 
+          onClick={() => setActiveTab('chats')} 
+          title="Все чаты"
+        >
+          <div className="tab-icon-wrapper">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            {chats.length > 0 && <span className="tab-badge">{chats.length}</span>}
           </div>
+          <span className="nav-tab-label">Чаты</span>
+        </button>
+        
+        <button 
+          className={`nav-tab-btn ${activeTab === 'contacts' ? 'active' : ''}`} 
+          onClick={() => setActiveTab('contacts')} 
+          title="В сети"
+        >
+          <div className="tab-icon-wrapper">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            {onlineUsers.length > 0 && <span className="tab-badge">{onlineUsers.length}</span>}
+          </div>
+          <span className="nav-tab-label">В сети</span>
+        </button>
+        
+        <button 
+          className={`nav-tab-btn ${activeTab === 'feed' ? 'active' : ''}`} 
+          onClick={() => { setActiveTab('feed'); setSelectedChatId(null); }} 
+          title="Лента"
+        >
+          <div className="tab-icon-wrapper">
+            <GlobeIcon size={20} />
+          </div>
+          <span className="nav-tab-label">Лента</span>
+        </button>
 
-          {activeTab === 'chats' ? (
-            <>
-              {/* Folder Tabs removed */}
-
-              {/* Chats List */}
-              <div className="sidebar-section-title" style={{ padding: '8px 15px 4px' }}>{appLanguage === 'ru' ? 'Чаты' : 'Chats'} ({filteredChats.length})</div>
-              <div className="chats-list scrollable" style={{ flex: 1 }}>
-                {filteredChats.map(chat => {
-                  const isCallActive = inVoice && activeCallChatId === chat.id;
-                  return (
-                    <div 
-                      key={chat.id} 
-                      className={`chat-item ${selectedChatId === chat.id ? 'active' : ''}`}
-                      onClick={() => setSelectedChatId(chat.id)}
-                    >
-                      <div className="chat-avatar" style={{ background: getPastelColorForId(chat.id), boxShadow: 'none' }}>
-                        {(() => {
-                          if (chat.type === 'dm') {
-                            const partnerName = getChatName(chat);
-                            const partnerUser = onlineUsers.find(u => u.username === partnerName);
-                            if (partnerUser && partnerUser.avatar) {
-                              return <img src={partnerUser.avatar} alt="avatar" style={{width:'100%', height:'100%', borderRadius:'50%', objectFit:'cover'}} />;
-                            }
-                            return partnerName ? partnerName[0].toUpperCase() : '👤';
-                          }
-                          if (chat.avatar) {
-                            return <img src={chat.avatar} alt="avatar" style={{width:'100%', height:'100%', borderRadius:'50%', objectFit:'cover'}} />;
-                          }
-                          return '👥';
-                        })()}
-                      </div>
-                      <div className="chat-info">
-                        <div className="chat-name-row">
-                          <span className="chat-name">{getChatName(chat)}</span>
-                          {isCallActive && <span className="call-active-indicator" title="Активный звонок">🔊</span>}
-                        </div>
-                        <span className="chat-last-message">
-                          {chat.messages && chat.messages.length > 0 
-                            ? `${chat.messages[chat.messages.length - 1].sender}: ${chat.messages[chat.messages.length - 1].text}`
-                            : 'Нет сообщений'}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          ) : (
-            <>
-              {/* Online Users Contacts List */}
-              <div className="sidebar-section-title" style={{ padding: '8px 15px 4px' }}>В сети ({onlineUsers.length})</div>
-              <div className="contacts-list scrollable" style={{ flex: 1 }}>
-                {onlineUsers.map(u => (
-                  <div 
-                    key={u.socketId} 
-                    className="chat-item"
-                    onClick={() => setShowProfile(u)}
-                  >
-                    <div className="chat-avatar" style={{ background: getPastelColorForId(u.username), boxShadow: 'none' }}>
-                      {u.avatar ? (
-                        <img src={u.avatar} alt={u.username} style={{width:'100%', height:'100%', borderRadius:'50%', objectFit:'cover'}} />
-                      ) : (
-                        u.username[0].toUpperCase()
-                      )}
-                    </div>
-                    <div className="chat-info">
-                      <span className="chat-name" style={{ fontWeight: 500 }}>{u.username} {u.username === username && '(Вы)'}</span>
-                      <span className="chat-last-message" style={{ color: 'var(--success)' }}>● в сети</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+        <button className="nav-tab-btn" onClick={() => setShowSettings(true)} title="Настройки">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          <span className="nav-tab-label">Настройки</span>
+        </button>
+        
+        <button className="nav-tab-btn" onClick={() => setShowProfile({ username, avatar: userAvatar, self: true })} title="Мой профиль" style={{ marginTop: 'auto', marginBottom: '15px' }}>
+          <div className="tab-avatar-wrapper">
+            {userAvatar ? (
+              <img src={userAvatar} alt="me" className="nav-tab-avatar" />
+            ) : (
+              <div className="nav-tab-avatar-text">{username ? username[0].toUpperCase() : '👤'}</div>
+            )}
+          </div>
+          <span className="nav-tab-label">Профиль</span>
+        </button>
       </div>
 
+      {/* Sidebar Panel */}
+      {(!isMobile || (!selectedChatId && activeTab !== 'feed')) && (
+        <div className="sidebar" style={{ display: 'flex', flexDirection: 'column', width: isMobile ? '100%' : '275px' }}>
+
+          {/* Right Sidebar Body */}
+          <div className="sidebar-main-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {/* Global Search and Chat Controls */}
+            <div className="sidebar-search">
+              <input 
+                type="text" 
+                placeholder="Поиск..." 
+                value={searchQuery} 
+                onChange={e => setSearchQuery(e.target.value)} 
+                style={{ borderRadius: '8px' }}
+              />
+              <button className="create-group-btn" onClick={() => setShowCreateGroup(true)} title="Создать группу" style={{ borderRadius: '8px', minWidth: '32px' }}>+</button>
+            </div>
+
+            <div style={{
+              padding: '6px 12px',
+              margin: '6px 15px 2px',
+              background: 'rgba(88, 101, 242, 0.12)',
+              border: '1px solid rgba(88, 101, 242, 0.25)',
+              borderRadius: '8px',
+              fontSize: '11px',
+              color: '#8ea1e1',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: '600',
+              gap: '6px',
+              letterSpacing: '0.3px'
+            }}>
+              <span>🌐</span>
+              <span>Офлайн-режим (Демо-версия)</span>
+            </div>
+
+            {activeTab === 'chats' ? (
+              <>
+                {/* Folder Tabs removed */}
+
+                {/* Chats List */}
+                <div className="sidebar-section-title" style={{ padding: '8px 15px 4px' }}>{appLanguage === 'ru' ? 'Чаты' : 'Chats'} ({filteredChats.length})</div>
+                <div className="chats-list scrollable" style={{ flex: 1 }}>
+                  {filteredChats.map(chat => {
+                    const isCallActive = inVoice && activeCallChatId === chat.id;
+                    return (
+                      <div 
+                        key={chat.id} 
+                        className={`chat-item ${selectedChatId === chat.id ? 'active' : ''}`}
+                        onClick={() => setSelectedChatId(chat.id)}
+                      >
+                        <div className="chat-avatar" style={{ background: getPastelColorForId(chat.id), boxShadow: 'none' }}>
+                          {(() => {
+                            if (chat.type === 'dm') {
+                              const partnerName = getChatName(chat);
+                              const partnerUser = onlineUsers.find(u => u.username === partnerName);
+                              if (partnerUser && partnerUser.avatar) {
+                                return <img src={partnerUser.avatar} alt="avatar" style={{width:'100%', height:'100%', borderRadius:'50%', objectFit:'cover'}} />;
+                              }
+                              return partnerName ? partnerName[0].toUpperCase() : '👤';
+                            }
+                            if (chat.avatar) {
+                              return <img src={chat.avatar} alt="avatar" style={{width:'100%', height:'100%', borderRadius:'50%', objectFit:'cover'}} />;
+                            }
+                            return '👥';
+                          })()}
+                        </div>
+                        <div className="chat-info">
+                          <div className="chat-name-row">
+                            <span className="chat-name">{getChatName(chat)}</span>
+                            {isCallActive && <span className="call-active-indicator" title="Активный звонок">🔊</span>}
+                          </div>
+                          <span className="chat-last-message">
+                            {chat.messages && chat.messages.length > 0 
+                              ? `${chat.messages[chat.messages.length - 1].sender}: ${chat.messages[chat.messages.length - 1].text}`
+                              : 'Нет сообщений'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Online Users Contacts List */}
+                <div className="sidebar-section-title" style={{ padding: '8px 15px 4px' }}>В сети ({onlineUsers.length})</div>
+                <div className="contacts-list scrollable" style={{ flex: 1 }}>
+                  {onlineUsers.map(u => (
+                    <div 
+                      key={u.socketId} 
+                      className="chat-item"
+                      onClick={() => setShowProfile(u)}
+                    >
+                      <div className="chat-avatar" style={{ background: getPastelColorForId(u.username), boxShadow: 'none' }}>
+                        {u.avatar ? (
+                          <img src={u.avatar} alt={u.username} style={{width:'100%', height:'100%', borderRadius:'50%', objectFit:'cover'}} />
+                        ) : (
+                          u.username[0].toUpperCase()
+                        )}
+                      </div>
+                      <div className="chat-info">
+                        <span className="chat-name" style={{ fontWeight: 500 }}>{u.username} {u.username === username && '(Вы)'}</span>
+                        <span className="chat-last-message" style={{ color: 'var(--success)' }}>● в сети</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Main Messaging Area */}
-      {activeChat ? (
-        <div className="main-chat-panel">
-          {/* Chat Header */}
-          <div className="chat-header discord-style-header">
-            <div 
-              className="discord-header-left"
-              style={{ cursor: activeChat.type === 'group' ? 'pointer' : 'default', userSelect: 'none' }}
-              onClick={() => {
-                if (activeChat.type === 'group') {
-                  setEditGroupName(activeChat.name || '');
-                  setEditGroupAvatar(activeChat.avatar || null);
-                  setShowEditGroupModal(true);
-                }
+      {(!isMobile || (selectedChatId || activeTab === 'feed')) && (
+        activeTab === 'feed' ? (
+          <div className="mobile-feed-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+            {isMobile && (
+              <div className="chat-header discord-style-header" style={{ padding: '0 16px', display: 'flex', alignItems: 'center' }}>
+                <h2 className="discord-channel-name">{appLanguage === 'ru' ? 'Лента публикаций' : 'Public Feed'}</h2>
+              </div>
+            )}
+            <FeedView 
+              socket={socket} 
+              username={username} 
+              appLanguage={appLanguage} 
+              onlineUsers={onlineUsers} 
+              onRequestMedia={(id, cb) => {
+                if (!socket) return;
+                socket.emit('request_media', { type: 'feed', id }, (res) => {
+                  if (res && res.success && res.dataUrl) {
+                    const cached = saveToCacheAsBinary(username, id, res.dataUrl);
+                    const url = cached || res.dataUrl;
+                    cb(url);
+                  }
+                });
               }}
-            >
-              <span className="discord-channel-icon">
-                {activeChat.type === 'dm' ? (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"></path></svg>
-                ) : (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>
+            />
+          </div>
+        ) : activeChat ? (
+          <div className="main-chat-panel">
+            {/* Chat Header */}
+            <div className="chat-header discord-style-header">
+              <div 
+                className="discord-header-left"
+                style={{ cursor: activeChat.type === 'group' ? 'pointer' : 'default', userSelect: 'none', display: 'flex', alignItems: 'center' }}
+                onClick={() => {
+                  if (activeChat.type === 'group') {
+                    setEditGroupName(activeChat.name || '');
+                    setEditGroupAvatar(activeChat.avatar || null);
+                    setShowEditGroupModal(true);
+                  }
+                }}
+              >
+                {isMobile && (
+                  <button 
+                    className="mobile-back-btn" 
+                    onClick={() => {
+                      setSelectedChatId(null);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-main)',
+                      cursor: 'pointer',
+                      marginRight: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '4px'
+                    }}
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                  </button>
                 )}
-              </span>
-              <h2 className="discord-channel-name">{getChatName(activeChat)}</h2>
+                <span className="discord-channel-icon">
+                  {activeChat.type === 'dm' ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"></path></svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>
+                  )}
+                </span>
+                <h2 className="discord-channel-name">{getChatName(activeChat)}</h2>
               <div className="discord-header-divider"></div>
               <span className="discord-channel-description">
                 {activeChat.type === 'dm' ? 'Личные сообщения' : 'Групповой чат'}
@@ -3123,6 +4215,14 @@ function App() {
                   <div className={`message-bubble ${msgPinned ? 'is-pinned-style' : ''}`}>
                     {!isOwn && <span className="message-sender-name">{msg.sender}</span>}
                     
+                    {msg.hasMedia && !msg.fileUrl && (
+                      <div className="message-media-placeholder" onClick={() => requestMedia('chat', msg.id, activeChat.id)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '20px', border: '1px dashed var(--primary)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ opacity: 0.5 }}><FolderIcon size={48} /></span>
+                          <span style={{ color: 'var(--primary)', fontSize: '13px' }}>Кликните для загрузки ({msg.fileName || 'медиа'})</span>
+                        </div>
+                      </div>
+                    )}
                     {msg.fileUrl && (
                       msg.fileType === 'audio' ? (
                         <VoiceMessagePlayer src={msg.fileUrl} fileName={msg.fileName} msgId={msg.id} />
@@ -3260,12 +4360,15 @@ function App() {
           </div>
         </div>
       ) : (
-        <div className="no-chat-selected">
-          <div className="empty-state-card">
-            <img src="/logo.png" style={{width: '96px', height: '96px', borderRadius: '50%', marginBottom: '16px'}} alt="Logo" />
-            <h3>Выберите чат, чтобы начать общение</h3>
+        !isMobile && (
+          <div className="no-chat-selected">
+            <div className="empty-state-card">
+              <img src="/logo.png" style={{width: '96px', height: '96px', borderRadius: '50%', marginBottom: '16px'}} alt="Logo" />
+              <h3>Выберите чат, чтобы начать общение</h3>
+            </div>
           </div>
-        </div>
+        )
+      )
       )}
 
       {/* Screen Capturer Source Selector Modal */}
@@ -3514,33 +4617,53 @@ function App() {
       {/* Mini-Profile Modal Card */}
       {showProfile && (
         <div className="modal-overlay" onClick={() => setShowProfile(null)}>
-          <div className="modal-content profile-modal" onClick={e => e.stopPropagation()}>
-            <div className="profile-header">
-              <div className="profile-avatar">
-                {showProfile.avatar ? (
-                  <img src={showProfile.avatar} alt={showProfile.username} style={{width:'100%', height:'100%', borderRadius:'50%', objectFit:'cover'}} />
+          <div className="profile-modal-large" onClick={e => e.stopPropagation()}>
+            {/* Left Column: Profile Card */}
+            <div className="profile-left-col">
+              <div className="profile-header">
+                <div className="profile-avatar">
+                  {showProfile.avatar ? (
+                    <img src={showProfile.avatar} alt={showProfile.username} style={{width:'100%', height:'100%', borderRadius:'50%', objectFit:'cover'}} />
+                  ) : (
+                    showProfile.username[0].toUpperCase()
+                  )}
+                </div>
+                <h2>{onlineUsers.find(u => u.username === showProfile.username)?.displayName || showProfile.username}</h2>
+                <span className="profile-status">
+                  {onlineUsers.some(u => u.username === showProfile.username) || showProfile.username === username ? <><div style={{width:"8px",height:"8px",borderRadius:"50%",background:"var(--success)",display:"inline-block",marginRight:"6px"}}/> В сети</> : <><div style={{width:"8px",height:"8px",borderRadius:"50%",background:"gray",display:"inline-block",marginRight:"6px"}}/> Не в сети</>}
+                </span>
+              </div>
+              <div className="profile-details">
+                <div className="detail-item">
+                  <span className="detail-label">Юзернейм:</span>
+                  <span className="detail-value">@{showProfile.username.toLowerCase()}</span>
+                </div>
+              </div>
+              <div className="profile-actions">
+                {showProfile.username !== username ? (
+                  <button className="start-dm-btn" onClick={() => startPrivateDM(showProfile.username)}>
+                    <MessageIcon size={16} style={{marginRight:"6px"}}/> Начать диалог
+                  </button>
                 ) : (
-                  showProfile.username[0].toUpperCase()
+                  <button className="start-dm-btn" onClick={() => {
+                    setShowProfile(null);
+                    setShowSettings(true);
+                  }} style={{ background: 'var(--primary)' }}>
+                    <SettingsIcon size={16} style={{marginRight:"6px"}}/> Редактировать профиль
+                  </button>
                 )}
-              </div>
-              <h2>{showProfile.username}</h2>
-              <span className="profile-status">
-                {onlineUsers.some(u => u.username === showProfile.username) || showProfile.username === username ? '🟢 В сети' : '⚫ Не в сети'}
-              </span>
-            </div>
-            <div className="profile-details">
-              <div className="detail-item">
-                <span className="detail-label">Имя пользователя:</span>
-                <span className="detail-value">@{showProfile.username.toLowerCase()}</span>
+                <button className="close-profile-btn" onClick={() => setShowProfile(null)}>Закрыть</button>
               </div>
             </div>
-            <div className="profile-actions">
-              {showProfile.username !== username && (
-                <button className="start-dm-btn" onClick={() => startPrivateDM(showProfile.username)}>
-                  💬 Начать диалог
-                </button>
-              )}
-              <button className="close-profile-btn" onClick={() => setShowProfile(null)}>Закрыть</button>
+
+            {/* Right Column: Wall Feed */}
+            <div className="profile-right-col">
+              <ProfileWall
+                socket={socket}
+                currentUser={username}
+                targetUser={showProfile.username}
+                onlineUsers={onlineUsers}
+              />
             </div>
           </div>
         </div>
@@ -4237,6 +5360,7 @@ function App() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

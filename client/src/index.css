@@ -3511,3 +3511,839 @@ button:not(.recording-cancel-btn):not(.attachment-preview-cancel-btn):not(.close
   background-color: var(--primary-glow) !important;
 }
 
+/* =====================================================================
+   PROFILE WALL & GRAFFITI CANVAS STYLING
+   ===================================================================== */
+
+/* Two-column layout in profile modal */
+.profile-modal-large {
+  background: rgba(28, 28, 36, 0.68) !important;
+  backdrop-filter: blur(35px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  display: flex;
+  flex-direction: row;
+  width: 900px;
+  height: 600px;
+  max-width: 95vw;
+  max-height: 85vh;
+  padding: 0;
+  overflow: hidden;
+  animation: fade-in 0.2s ease-out;
+}
+
+.profile-left-col {
+  width: 300px;
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+  justify-content: center;
+  background: rgba(20, 20, 28, 0.25);
+}
+
+.profile-divider {
+  width: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  align-self: stretch;
+}
+
+.profile-right-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Profile Wall Section */
+.profile-wall {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: rgba(10, 10, 15, 0.2);
+}
+
+.wall-header {
+  padding: 20px 24px 12px;
+  font-size: 16px;
+  font-weight: 700;
+  color: white;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.wall-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wall-feed {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.wall-empty-state {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-top: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.wall-empty-icon {
+  font-size: 32px;
+  opacity: 0.5;
+}
+
+/* Wall Posts */
+.wall-post {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: background-color 0.2s;
+}
+
+.wall-post:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.wall-post-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wall-post-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.wall-post-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.wall-post-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.wall-post-author {
+  font-size: 13px;
+  font-weight: 600;
+  color: white;
+}
+
+.wall-post-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.wall-post-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-main);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.wall-post-graffiti {
+  max-width: 100%;
+  margin-top: 4px;
+}
+
+.wall-post-graffiti img {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 8px;
+  background: #0d0d11;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: block;
+}
+
+/* Wall Inputs */
+.wall-input-section {
+  padding: 16px 24px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(20, 20, 28, 0.4);
+}
+
+.wall-input-container {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.wall-textarea {
+  flex: 1;
+  background: var(--bg-dark);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: white;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  height: 42px;
+  max-height: 120px;
+  outline: none;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.wall-textarea:focus {
+  border-color: #8a2be2;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.wall-input-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.graffiti-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #ab70ff;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, border-color 0.2s, transform 0.1s;
+}
+
+.graffiti-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #8a2be2;
+  transform: translateY(-1px);
+}
+
+.graffiti-btn:active {
+  transform: translateY(0);
+}
+
+.wall-send-btn {
+  padding: 0 18px;
+  height: 42px;
+  border-radius: 10px;
+  background: #8a2be2;
+  color: white;
+  border: none;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.wall-send-btn:hover {
+  background: #731ebb;
+  transform: translateY(-1px);
+}
+
+.wall-send-btn:active {
+  transform: translateY(0);
+}
+
+.wall-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Graffiti Drawing Canvas Overlay */
+.graffiti-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(10, 10, 14, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(12px);
+  animation: fade-in 0.2s ease-out;
+}
+
+.graffiti-modal-content {
+  background: #16161f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 548px;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.8);
+}
+
+.graffiti-canvas-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.graffiti-canvas-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: white;
+}
+
+.graffiti-canvas-container {
+  background: #0d0d11;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.graffiti-canvas-container canvas {
+  display: block;
+  cursor: crosshair;
+  background: transparent;
+}
+
+.graffiti-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.graffiti-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.graffiti-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  width: 68px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.graffiti-color-picker {
+  display: flex;
+  gap: 10px;
+}
+
+.color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: transform 0.15s, border-color 0.15s;
+  box-shadow: inset 0 0 4px rgba(0,0,0,0.5);
+}
+
+.color-swatch:hover {
+  transform: scale(1.2);
+}
+
+.color-swatch.active {
+  border-color: #ffffff;
+  transform: scale(1.1);
+}
+
+.brush-sizes {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.brush-size-dot-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.brush-size-dot-wrapper:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.brush-size-dot-wrapper.active {
+  border-color: #8a2be2;
+  background: rgba(138, 43, 226, 0.15);
+}
+
+.brush-size-dot {
+  border-radius: 50%;
+  background: #e2e8f0;
+}
+
+.eraser-btn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+  margin-left: auto;
+}
+
+.eraser-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+}
+
+.eraser-btn.active {
+  background: #8a2be2;
+  border-color: #8a2be2;
+  color: white;
+}
+
+.graffiti-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.graffiti-clear-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.graffiti-clear-btn:hover {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.graffiti-cancel-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 0.2s, color 0.2s;
+  margin-left: auto;
+}
+
+.graffiti-cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+}
+
+.graffiti-send-btn {
+  padding: 8px 20px;
+  border-radius: 8px;
+  background: #8a2be2;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 12px;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.graffiti-send-btn:hover {
+  background: #731ebb;
+  transform: translateY(-1px);
+}
+
+.graffiti-send-btn:active {
+  transform: translateY(0);
+}
+
+
+
+/* --- UI Icon Styles --- */
+.ui-icon {
+  display: inline-block;
+  vertical-align: middle;
+  transition: stroke 0.2s ease, transform 0.2s ease;
+}
+
+button:hover .ui-icon,
+.graffiti-btn:hover .ui-icon,
+.wall-send-btn:hover .ui-icon {
+  stroke: var(--primary);
+  transform: scale(1.05);
+}
+
+.graffiti-btn .ui-icon {
+  margin: 0;
+}
+
+.custom-player-controls .ui-icon {
+  stroke: white;
+}
+.custom-player-controls button:hover .ui-icon {
+  stroke: var(--primary);
+}
+
+/* Custom Context Menu */
+.custom-context-menu {
+  position: fixed;
+  background-color: #18191d;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
+  padding: 6px 0;
+  min-width: 160px;
+  z-index: 10000;
+  animation: context-menu-fade 0.1s ease-out;
+}
+
+@keyframes context-menu-fade {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.context-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 8px 14px !important;
+  background: transparent !important;
+  border: none !important;
+  color: #dbdee1 !important;
+  font-size: 13px !important;
+  text-align: left !important;
+  cursor: pointer !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  transition: background-color 0.15s, color 0.15s !important;
+  font-family: inherit !important;
+  font-weight: 500 !important;
+}
+
+.context-menu-item:hover {
+  background-color: #5865f2 !important;
+  color: #ffffff !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.context-menu-item.danger {
+  color: #f23f43 !important;
+}
+
+.context-menu-item.danger:hover {
+  background-color: #da373c !important;
+  color: #ffffff !important;
+}
+
+/* Editing Message Banner above Input Box */
+.editing-message-banner {
+  display: flex;
+  align-items: center;
+  background: rgba(88, 101, 242, 0.1);
+  border-left: 4px solid #5865f2;
+  padding: 8px 16px;
+  gap: 12px;
+  position: relative;
+  z-index: 2;
+  animation: slide-down 0.2s ease-out;
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.editing-banner-icon {
+  color: #5865f2;
+  display: flex;
+  align-items: center;
+}
+
+.editing-banner-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.editing-banner-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #5865f2;
+}
+
+.editing-banner-text {
+  font-size: 13px;
+  color: #dbdee1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editing-banner-cancel {
+  background: transparent !important;
+  border: none !important;
+  color: #949ba4 !important;
+  cursor: pointer !important;
+  padding: 4px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  transition: color 0.15s, background-color 0.15s !important;
+}
+
+.editing-banner-cancel:hover {
+  color: #f2f3f5 !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  transform: none !important;
+}
+
+.message-edited-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.45);
+  margin-right: 4px;
+}
+
+/* --- Voice Message Transcription Styles --- */
+.voice-transcription-text {
+  font-size: 13px;
+  color: var(--text-main);
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 3px solid var(--primary);
+  font-style: italic;
+  line-height: 1.4;
+  word-break: break-word;
+  margin-top: 4px;
+}
+
+.app-container.light-theme .voice-transcription-text {
+  background: rgba(0, 0, 0, 0.03);
+  color: #333;
+}
+
+/* --- Feed View Styles --- */
+.feed-view-container {
+  scrollbar-width: thin;
+  scrollbar-color: var(--primary) transparent;
+}
+.feed-create-post-box {
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  background: rgba(255, 255, 255, 0.04) !important;
+  backdrop-filter: blur(10px);
+}
+.feed-create-post-box:focus-within {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(var(--primary-rgb), 0.2);
+  border-color: var(--primary) !important;
+}
+.feed-post-card {
+  transition: transform 0.3s, box-shadow 0.3s;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  background: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(10px);
+}
+.feed-post-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+.feed-post-card button {
+  transition: transform 0.2s, opacity 0.2s;
+}
+.feed-post-card button:hover {
+  transform: scale(1.1);
+  opacity: 0.8;
+}
+
+/* =====================================================================
+   MOBILE VIEW & RESPONSIVE DESIGN STYLING
+   ===================================================================== */
+@media (max-width: 767px) {
+  /* Hide desktop-only components */
+  .no-chat-selected {
+    display: none !important;
+  }
+
+  /* Full screen overrides */
+  .sidebar, .main-chat-panel, .mobile-feed-container {
+    width: auto !important;
+    height: 100% !important;
+    flex: 1 !important;
+  }
+
+  /* Drawer panel full screen sizing */
+  .drawer-menu {
+    width: 280px !important;
+  }
+
+  /* Large modal adjustments */
+  .profile-modal-large, .settings-telegram-modal, .screen-picker-modal {
+    width: 95vw !important;
+    height: 90vh !important;
+    flex-direction: column !important;
+    overflow-y: auto !important;
+  }
+
+  .profile-left-col {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    padding: 20px !important;
+  }
+
+  .profile-divider {
+    display: none !important;
+  }
+
+  .graffiti-modal-content {
+    width: 95vw !important;
+    padding: 16px !important;
+  }
+
+  .graffiti-canvas-container canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Bottom tab navigation bar styling */
+  .mobile-bottom-nav {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    background-color: var(--bg-dark);
+    border-top: 1px solid var(--border);
+    height: 60px;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+  }
+
+  .mobile-nav-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 11px;
+    gap: 4px;
+    flex: 1;
+    height: 100%;
+    transition: color 0.2s, background-color 0.2s;
+  }
+
+  .mobile-nav-btn:hover {
+    color: var(--text-main);
+  }
+
+  .mobile-nav-btn.active {
+    color: var(--primary);
+  }
+
+  .mobile-nav-btn svg {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+.demo-btn {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.1s;
+  text-align: center;
+  margin-top: 5px;
+  display: block;
+  width: 100%;
+}
+
+.demo-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: white;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.demo-btn:active {
+  transform: scale(0.98);
+}

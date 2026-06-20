@@ -1,0 +1,6 @@
+{
+  "appId": "com.telecord.messenger",
+  "appName": "Telecord",
+  "webDir": "../client/dist",
+  "bundledWebRuntime": false
+}

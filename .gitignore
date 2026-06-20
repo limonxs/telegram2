@@ -9,3 +9,6 @@ release/
 *.exe
 *.ico
 *.bmp
+android-sdk/
+*.rar
+*.apk

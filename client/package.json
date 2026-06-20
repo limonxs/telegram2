@@ -1,7 +1,7 @@
 {
   "name": "client",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.5",
   "description": "LAN Messenger App",
   "author": "Antigravity",
   "main": "main.js",
@@ -72,6 +72,7 @@
   },
   "dependencies": {
     "electron-updater": "^6.3.0",
+    "lucide-react": "^1.21.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "socket.io-client": "^4.8.3"

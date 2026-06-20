@@ -9,6 +9,42 @@ const os = require('os');
 
 const app = express();
 app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+
+const ERROR_LOG_FILE = path.join(__dirname, 'server_error.log');
+function logServerError(message, err = '') {
+  const timestamp = new Date().toISOString();
+  const logMsg = `[${timestamp}] ${message} ${err}\n`;
+  console.error(logMsg.trim());
+  fs.appendFile(ERROR_LOG_FILE, logMsg, (appendErr) => {
+    if (appendErr) console.error('Failed to write to server error log:', appendErr);
+  });
+}
+
+process.on('uncaughtException', (err) => {
+  logServerError('Uncaught Exception:', err.stack || err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  logServerError('Unhandled Rejection:', reason);
+});
+
+const BUG_REPORTS_DIR = path.join(__dirname, 'bug_reports');
+if (!fs.existsSync(BUG_REPORTS_DIR)) {
+  fs.mkdirSync(BUG_REPORTS_DIR);
+}
+
+app.post('/api/bug-report', (req, res) => {
+  const report = req.body.report;
+  if (!report) return res.status(400).json({ error: 'No report provided' });
+  const filename = `report_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.json`;
+  fs.writeFile(path.join(BUG_REPORTS_DIR, filename), typeof report === 'string' ? report : JSON.stringify(report, null, 2), (err) => {
+    if (err) {
+      logServerError('Failed to save bug report:', err);
+      return res.status(500).json({ success: false, error: 'Failed to save' });
+    }
+    res.json({ success: true });
+  });
+});
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime(), users: users.size });
@@ -73,6 +109,60 @@ function scheduleSave() {
   }, 1000);
 }
 
+const WALL_FILE = path.join(__dirname, 'wall_store.json');
+let wallPosts = [];
+let wallSaveTimeout = null;
+let wallSavePending = false;
+
+function scheduleWallSave() {
+  wallSavePending = true;
+  if (wallSaveTimeout) return;
+  wallSaveTimeout = setTimeout(() => {
+    wallSaveTimeout = null;
+    if (!wallSavePending) return;
+    wallSavePending = false;
+    fs.writeFile(WALL_FILE, JSON.stringify(wallPosts, null, 2), 'utf8', (err) => {
+      if (err) console.error('Failed to save wall posts to disk:', err);
+    });
+  }, 1000);
+}
+
+const FEED_FILE = path.join(__dirname, 'feed_store.json');
+let feedPosts = [];
+let feedSaveTimeout = null;
+let feedSavePending = false;
+
+function scheduleFeedSave() {
+  feedSavePending = true;
+  if (feedSaveTimeout) return;
+  feedSaveTimeout = setTimeout(() => {
+    feedSaveTimeout = null;
+    if (!feedSavePending) return;
+    feedSavePending = false;
+    fs.writeFile(FEED_FILE, JSON.stringify(feedPosts, null, 2), 'utf8', (err) => {
+      if (err) console.error('Failed to save feed posts to disk:', err);
+    });
+  }, 1000);
+}
+
+const USERS_FILE = path.join(__dirname, 'users_store.json');
+let usersProfile = {}; // username -> { aboutText, audioUrl }
+let usersSaveTimeout = null;
+let usersSavePending = false;
+
+function scheduleUsersSave() {
+  usersSavePending = true;
+  if (usersSaveTimeout) return;
+  usersSaveTimeout = setTimeout(() => {
+    usersSaveTimeout = null;
+    if (!usersSavePending) return;
+    usersSavePending = false;
+    fs.writeFile(USERS_FILE, JSON.stringify(usersProfile, null, 2), 'utf8', (err) => {
+      if (err) console.error('Failed to save users profile to disk:', err);
+    });
+  }, 1000);
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // In-memory data stores
 // ═══════════════════════════════════════════════════════════════════════
@@ -92,6 +182,55 @@ try {
   }
 } catch (e) {
   console.error('Failed to load chats from disk:', e);
+}
+
+// Load wall posts from file
+try {
+  if (fs.existsSync(WALL_FILE)) {
+    wallPosts = JSON.parse(fs.readFileSync(WALL_FILE, 'utf8'));
+    // Normalize old posts: migrate 'content' field to 'text'/'mediaUrl'
+    wallPosts = wallPosts.map(post => {
+      if (post.content !== undefined && post.text === undefined) {
+        const normalized = { ...post };
+        if (post.mediaType === 'text' || post.mediaType === null || post.mediaType === undefined) {
+          normalized.text = post.content || '';
+          normalized.mediaType = null;
+          normalized.mediaUrl = null;
+        } else {
+          normalized.text = '';
+          normalized.mediaType = post.mediaType;
+          normalized.mediaUrl = post.content;
+        }
+        delete normalized.content;
+        return normalized;
+      }
+      return post;
+    });
+    scheduleWallSave();
+    console.log(`Loaded ${wallPosts.length} wall posts from persistence store.`);
+  }
+} catch (e) {
+  console.error('Failed to load wall posts from disk:', e);
+}
+
+// Load users profile from file
+try {
+  if (fs.existsSync(USERS_FILE)) {
+    usersProfile = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+    console.log(`Loaded ${Object.keys(usersProfile).length} user profiles from persistence store.`);
+  }
+} catch (e) {
+  console.error('Failed to load users profile from disk:', e);
+}
+
+// Load feed posts from file
+try {
+  if (fs.existsSync(FEED_FILE)) {
+    feedPosts = JSON.parse(fs.readFileSync(FEED_FILE, 'utf8'));
+    console.log(`Loaded ${feedPosts.length} feed posts from persistence store.`);
+  }
+} catch (e) {
+  console.error('Failed to load feed posts from disk:', e);
 }
 
 if (!chats.has('global')) {
@@ -289,12 +428,15 @@ io.on('connection', (socket) => {
   // ── Login ──────────────────────────────────────────────────────────
   socket.on('login', (data, callback) => {
     let username = '';
+    let displayName = '';
     let avatar = null;
     if (data && typeof data === 'object') {
       username = data.username;
+      displayName = data.displayName || data.username; // fallback
       avatar = data.avatar;
     } else {
       username = data;
+      displayName = data;
     }
 
     if (!isValidUsername(username)) {
@@ -302,31 +444,24 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Enforce single active socket per username
+    // Check if username is already taken by another active socket
     for (const [sid, u] of users.entries()) {
       if (u.username === username && sid !== socket.id) {
-        console.log(`Force disconnecting duplicate session for user ${username} (${sid})`);
-        const oldSocket = io.sockets.sockets.get(sid);
-        if (oldSocket) {
-          if (voiceUsers.has(sid)) {
-            const vUser = voiceUsers.get(sid);
-            const vRoomId = vUser.roomId;
-            voiceUsers.delete(sid);
-            for (const [otherSid, otherVUser] of voiceUsers.entries()) {
-              if (otherVUser.roomId === vRoomId) {
-                io.to(otherSid).emit('user_left_voice', sid);
-              }
-            }
-            cleanupRoomIfNeeded(vRoomId);
-          }
-          oldSocket.disconnect(true);
-        }
-        users.delete(sid);
+        if (typeof callback === 'function') callback({ success: false, error: 'Этот юзернейм уже используется другим пользователем' });
+        return;
       }
     }
 
-    users.set(socket.id, { username, avatar, socketId: socket.id });
-    console.log(`User logged in: ${username} (${socket.id})`);
+    // Initialize or update user profile with displayName
+    if (!usersProfile[username]) {
+      usersProfile[username] = { aboutText: '', audioUrl: null, displayName };
+    } else {
+      usersProfile[username].displayName = displayName;
+    }
+    scheduleUsersSave();
+
+    users.set(socket.id, { username, displayName, avatar, socketId: socket.id });
+    console.log(`User logged in: ${displayName} (@${username}) (${socket.id})`);
 
     const MAX_MESSAGES_ON_LOGIN = 50;
     const userChats = Array.from(chats.values())
@@ -338,26 +473,33 @@ io.on('connection', (socket) => {
       })
       .map(c => ({
         ...c,
-        messages: (c.messages || []).slice(-MAX_MESSAGES_ON_LOGIN)
+        messages: (c.messages || []).slice(-MAX_MESSAGES_ON_LOGIN).map(m => ({ ...m, hasMedia: !!m.fileUrl, fileUrl: null }))
       }));
 
     if (typeof callback === 'function') {
       callback({
         success: true,
         chats: userChats,
-        onlineUsers: Array.from(users.values()).map(u => ({ username: u.username, socketId: u.socketId, avatar: u.avatar }))
+        onlineUsers: Array.from(users.values()).map(u => ({ username: u.username, displayName: u.displayName, socketId: u.socketId, avatar: u.avatar }))
       });
     }
 
-    socket.broadcast.emit('user_joined', { username, socketId: socket.id, avatar });
+    socket.broadcast.emit('user_joined', { username, displayName, socketId: socket.id, avatar });
   });
 
   // ── Avatar Update ──────────────────────────────────────────────────
   socket.on('update_avatar', (avatar) => {
     const user = users.get(socket.id);
     if (!user) return;
-    if (typeof avatar !== 'string' || avatar.length > 100000) return;
+    if (typeof avatar !== 'string' || avatar.length > 10000000) return;
     user.avatar = avatar;
+    
+    if (!usersProfile[user.username]) {
+      usersProfile[user.username] = {};
+    }
+    usersProfile[user.username].avatar = avatar;
+    scheduleUsersSave();
+
     io.emit('user_avatar_updated', { username: user.username, avatar });
   });
 
@@ -444,8 +586,267 @@ io.on('connection', (socket) => {
     callback({ success: true });
   });
 
+  // ── User Profile ────────────────────────────────────────────────────
+  socket.on('get_user_profile', ({ username }, callback) => {
+    if (typeof callback !== 'function') return;
+    if (!isValidUsername(username)) return callback({ error: 'Invalid username' });
+    const profile = usersProfile[username] || { aboutText: '', audioUrl: null };
+    callback({ success: true, profile });
+  });
+
+  socket.on('search_users', ({ query }, callback) => {
+    if (typeof callback !== 'function') return;
+    if (!query || typeof query !== 'string') return callback([]);
+    const q = query.trim().toLowerCase();
+    if (!q) return callback([]);
+
+    const userSession = users.get(socket.id);
+    const myUsername = userSession ? userSession.username : null;
+
+    const results = [];
+    for (const [uname, profile] of Object.entries(usersProfile)) {
+      if (myUsername && uname === myUsername) continue;
+      
+      const dispName = profile.displayName || uname;
+      if (uname.toLowerCase().includes(q) || dispName.toLowerCase().includes(q)) {
+        results.push({
+          username: uname,
+          displayName: dispName,
+          aboutText: profile.aboutText || '',
+          audioUrl: profile.audioUrl || null
+        });
+      }
+    }
+    callback(results.slice(0, 20));
+  });
+
+  socket.on('update_user_profile', ({ aboutText, audioUrl, newUsername, newDisplayName }, callback) => {
+    if (typeof callback !== 'function') return;
+    const user = users.get(socket.id);
+    if (!user) return callback({ error: 'Not logged in' });
+    
+    if (aboutText && aboutText.length > 2000) return callback({ error: 'About text too long' });
+    if (audioUrl && audioUrl.length > 15000000) return callback({ error: 'Audio file too large (max 10MB)' });
+
+    // Validate new credentials if supplied
+    if (newUsername !== undefined && newUsername !== user.username) {
+      if (!isValidUsername(newUsername)) {
+        return callback({ error: 'Некорректный юзернейм' });
+      }
+      // Check collision
+      for (const [sid, u] of users.entries()) {
+        if (u.username === newUsername && sid !== socket.id) {
+          return callback({ error: 'Этот юзернейм уже занят другим пользователем' });
+        }
+      }
+    }
+
+    const oldUsername = user.username;
+    
+    // Migrate profile maps
+    if (newUsername && newUsername !== oldUsername) {
+      usersProfile[newUsername] = {
+        ...usersProfile[oldUsername],
+        aboutText: aboutText !== undefined ? aboutText : (usersProfile[oldUsername]?.aboutText || ''),
+        audioUrl: audioUrl !== undefined ? audioUrl : (usersProfile[oldUsername]?.audioUrl || null),
+        displayName: newDisplayName || usersProfile[oldUsername]?.displayName || newUsername
+      };
+      delete usersProfile[oldUsername];
+      
+      // Update session username
+      user.username = newUsername;
+
+      // Migrate chats and DM chat IDs
+      for (const [chatId, chat] of chats.entries()) {
+        if (chat.type === 'dm' && chat.users && chat.users.includes(oldUsername)) {
+          chat.users = chat.users.map(u => u === oldUsername ? newUsername : u);
+          const newNames = [...chat.users].sort();
+          const newChatId = `dm_${newNames[0]}_${newNames[1]}`;
+          if (chatId !== newChatId) {
+            chats.delete(chatId);
+            chat.id = newChatId;
+            chats.set(newChatId, chat);
+          }
+        }
+        if (chat.messages) {
+          chat.messages.forEach(msg => {
+            if (msg.sender === oldUsername) {
+              msg.sender = newUsername;
+            }
+          });
+        }
+      }
+      scheduleSave();
+    } else {
+      // Just update current profile fields
+      usersProfile[oldUsername] = {
+        ...usersProfile[oldUsername],
+        aboutText: aboutText !== undefined ? aboutText : (usersProfile[oldUsername]?.aboutText || ''),
+        audioUrl: audioUrl !== undefined ? audioUrl : (usersProfile[oldUsername]?.audioUrl || null),
+        displayName: newDisplayName || usersProfile[oldUsername]?.displayName || oldUsername
+      };
+    }
+
+    if (newDisplayName) {
+      user.displayName = newDisplayName;
+      if (usersProfile[user.username]) {
+        usersProfile[user.username].displayName = newDisplayName;
+      }
+    }
+
+    scheduleUsersSave();
+    
+    // Broadcast updates
+    if (newUsername && newUsername !== oldUsername) {
+      io.emit('user_details_updated', {
+        oldUsername,
+        newUsername,
+        displayName: user.displayName,
+        socketId: socket.id
+      });
+    } else {
+      io.emit('user_profile_updated', { username: user.username, profile: usersProfile[user.username] });
+      io.emit('user_details_updated', {
+        oldUsername: user.username,
+        newUsername: user.username,
+        displayName: user.displayName,
+        socketId: socket.id
+      });
+    }
+
+    callback({ success: true });
+  });
+
+  // ── Profile Wall Posts ──────────────────────────────────────────────
+  socket.on('get_wall_posts', ({ targetUsername }, callback) => {
+    console.log(`[ProfileWall] get_wall_posts requested for: ${targetUsername}`);
+    if (typeof callback !== 'function') return;
+    if (!isValidUsername(targetUsername)) return callback({ error: 'Invalid username' });
+    const posts = wallPosts.filter(p => p.targetUser === targetUsername);
+    posts.sort((a, b) => b.timestamp - a.timestamp);
+    callback({ success: true, posts: posts.map(p => ({ ...p, hasMedia: !!p.mediaUrl, mediaUrl: null })) });
+  });
+
+  socket.on('create_wall_post', ({ targetUsername, text, mediaType, mediaUrl }, callback) => {
+    const user = users.get(socket.id);
+    const authorName = user ? user.username : 'Unknown';
+    
+    if (typeof callback !== 'function') return;
+    if (!user) return callback({ error: 'Not logged in' });
+    if (!isValidUsername(targetUsername)) return callback({ error: 'Invalid target username' });
+
+    if ((!text || text.trim().length === 0) && !mediaUrl) {
+      return callback({ error: 'Post content cannot be empty' });
+    }
+
+    if (text && text.length > 5000) {
+      return callback({ error: 'Post content is too long' });
+    }
+    
+    if (mediaType && !['image', 'video', 'gif', 'graffiti'].includes(mediaType)) {
+      return callback({ error: 'Invalid media type' });
+    }
+
+    const post = {
+      id: `post_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+      author: user.username,
+      targetUser: targetUsername,
+      text: text ? text.trim() : '',
+      mediaType: mediaType || null,
+      mediaUrl: mediaUrl || null,
+      timestamp: Date.now()
+    };
+
+    wallPosts.push(post);
+    scheduleWallSave();
+
+    io.emit('wall_post_created', { ...post, hasMedia: !!post.mediaUrl, mediaUrl: null });
+    callback({ success: true, post });
+  });
+
+  // ── Global Feed ────────────────────────────────────────────────────
+  socket.on('get_feed_posts', (callback) => {
+    if (typeof callback !== 'function') return;
+    const posts = [...feedPosts];
+    posts.sort((a, b) => b.timestamp - a.timestamp);
+    callback({ success: true, posts: posts.map(p => ({ ...p, hasMedia: !!p.mediaUrl, mediaUrl: null })) });
+  });
+
+  socket.on('create_feed_post', ({ text, mediaType, mediaUrl }, callback) => {
+    const user = users.get(socket.id);
+    if (typeof callback !== 'function') return;
+    if (!user) return callback({ error: 'Not logged in' });
+
+    if ((!text || text.trim().length === 0) && !mediaUrl) {
+      return callback({ error: 'Post content cannot be empty' });
+    }
+
+    if (text && text.length > 5000) {
+      return callback({ error: 'Post content is too long' });
+    }
+
+    const post = {
+      id: `feed_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+      author: user.username,
+      text: text ? text.trim() : '',
+      mediaType: mediaType || null,
+      mediaUrl: mediaUrl || null,
+      timestamp: Date.now(),
+      likes: [], // Array of usernames
+      comments: [] // Array of { id, author, text, timestamp }
+    };
+
+    feedPosts.push(post);
+    scheduleFeedSave();
+
+    io.emit('feed_post_created', { ...post, hasMedia: !!post.mediaUrl, mediaUrl: null });
+    callback({ success: true, post });
+  });
+
+  socket.on('like_feed_post', ({ postId }, callback) => {
+    const user = users.get(socket.id);
+    if (typeof callback !== 'function') return;
+    if (!user) return callback({ error: 'Not logged in' });
+
+    const post = feedPosts.find(p => p.id === postId);
+    if (!post) return callback({ error: 'Post not found' });
+
+    const likeIndex = post.likes.indexOf(user.username);
+    if (likeIndex === -1) {
+      post.likes.push(user.username);
+    } else {
+      post.likes.splice(likeIndex, 1);
+    }
+
+    scheduleFeedSave();
+    io.emit('feed_post_updated', { ...post, hasMedia: !!post.mediaUrl, mediaUrl: null });
+    callback({ success: true, post });
+  });
+
+  socket.on('add_feed_comment', ({ postId, text }, callback) => {
+    const user = users.get(socket.id);
+    if (typeof callback !== 'function') return;
+    if (!user) return callback({ error: 'Not logged in' });
+    if (!text || text.trim().length === 0) return callback({ error: 'Comment cannot be empty' });
+
+    const post = feedPosts.find(p => p.id === postId);
+    if (!post) return callback({ error: 'Post not found' });
+
+    const comment = {
+      id: `comment_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+      author: user.username,
+      text: text.trim(),
+      timestamp: Date.now()
+    };
+
+    post.comments.push(comment);
+    scheduleFeedSave();
+    io.emit('feed_post_updated', { ...post, hasMedia: !!post.mediaUrl, mediaUrl: null });
+    callback({ success: true, post });
+  });
+
   // ── Chat Message (with rate limit + validation) ────────────────────
-  socket.on('chat_message', ({ chatId, text, fileUrl, fileType, fileName }) => {
+  socket.on('chat_message', ({ chatId, text, fileUrl, fileType, fileName, transcription }) => {
     if (!checkRateLimit(socket.id, 'message')) return;
 
     const user = users.get(socket.id);
@@ -457,6 +858,7 @@ io.on('connection', (socket) => {
 
     if (text && typeof text === 'string' && text.length > MAX_TEXT_LENGTH) return;
     if (fileUrl && typeof fileUrl === 'string' && fileUrl.length > MAX_FILE_URL_LENGTH) return;
+    if (transcription && typeof transcription === 'string' && transcription.length > MAX_TEXT_LENGTH) return;
 
     const message = {
       id: generateMessageId(),
@@ -465,6 +867,7 @@ io.on('connection', (socket) => {
       fileUrl: fileUrl || null,
       fileType: fileType || null,
       fileName: fileName || null,
+      transcription: transcription || null,
       timestamp: Date.now()
     };
 
@@ -476,7 +879,59 @@ io.on('connection', (socket) => {
     }
 
     scheduleSave();
-    io.emit('chat_message', { chatId, message });
+    const emittedMessage = { ...message, hasMedia: !!message.fileUrl, fileUrl: null };
+    io.emit('chat_message', { chatId, message: emittedMessage });
+  });
+
+  // ── Edit Message ───────────────────────────────────────────────────
+  socket.on('edit_message', ({ chatId, messageId, newText }, callback) => {
+    const user = users.get(socket.id);
+    if (!user) return callback && callback({ error: 'Not logged in' });
+    if (!isValidChatId(chatId)) return callback && callback({ error: 'Invalid chat ID' });
+
+    const chat = chats.get(chatId);
+    if (!chat) return callback && callback({ error: 'Chat not found' });
+
+    const message = chat.messages.find(m => m.id === messageId);
+    if (!message) return callback && callback({ error: 'Message not found' });
+
+    if (message.sender !== user.username) {
+      return callback && callback({ error: 'You can only edit your own messages' });
+    }
+
+    if (newText && typeof newText === 'string' && newText.length > MAX_TEXT_LENGTH) {
+      return callback && callback({ error: 'Message too long' });
+    }
+
+    message.text = newText || '';
+    message.isEdited = true;
+
+    scheduleSave();
+    io.emit('message_edited', { chatId, messageId, text: message.text, isEdited: true });
+    if (callback) callback({ success: true });
+  });
+
+  // ── Delete Message ─────────────────────────────────────────────────
+  socket.on('delete_message', ({ chatId, messageId }, callback) => {
+    const user = users.get(socket.id);
+    if (!user) return callback && callback({ error: 'Not logged in' });
+    if (!isValidChatId(chatId)) return callback && callback({ error: 'Invalid chat ID' });
+
+    const chat = chats.get(chatId);
+    if (!chat) return callback && callback({ error: 'Chat not found' });
+
+    const msgIndex = chat.messages.findIndex(m => m.id === messageId);
+    if (msgIndex === -1) return callback && callback({ error: 'Message not found' });
+
+    const message = chat.messages[msgIndex];
+    if (message.sender !== user.username) {
+      return callback && callback({ error: 'You can only delete your own messages' });
+    }
+
+    chat.messages.splice(msgIndex, 1);
+    scheduleSave();
+    io.emit('message_deleted', { chatId, messageId });
+    if (callback) callback({ success: true });
   });
 
   // ── Ping Latency Check ─────────────────────────────────────────────
@@ -560,6 +1015,27 @@ io.on('connection', (socket) => {
   });
 
   // ── Disconnect ──────────────────────────────────────────────────────
+  
+  // ── Media Fetching ──────────────────────────────────────────────────
+  socket.on('request_media', ({ type, id, chatId }, callback) => {
+    if (typeof callback !== 'function') return;
+    let dataUrl = null;
+    if (type === 'chat') {
+      const chat = chats.get(chatId);
+      if (chat) {
+        const msg = chat.messages.find(m => m.id === id);
+        if (msg) dataUrl = msg.fileUrl;
+      }
+    } else if (type === 'wall') {
+      const post = wallPosts.find(p => p.id === id);
+      if (post) dataUrl = post.mediaUrl;
+    } else if (type === 'feed') {
+      const post = feedPosts.find(p => p.id === id);
+      if (post) dataUrl = post.mediaUrl;
+    }
+    callback({ success: true, dataUrl });
+  });
+
   socket.on('disconnect', () => {
     const user = users.get(socket.id);
     if (user) {
@@ -750,28 +1226,91 @@ io.on('connection', (socket) => {
 // Start Server
 // ═══════════════════════════════════════════════════════════════════════
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`LAN Messenger server running on port ${PORT}`);
-  console.log('--------------------------------------------------');
-  console.log('Available network interfaces on this machine:');
-  const nets = os.networkInterfaces();
-  let foundRadmin = false;
-  for (const name of Object.keys(nets)) {
-    for (const net of nets[name]) {
-      if (net.family === 'IPv4' && !net.internal) {
-        const isRadmin = name.toLowerCase().includes('radmin') || net.address.startsWith('26.');
-        if (isRadmin) {
-          console.log(`  => [RADMIN VPN] IP address: ${net.address} (Tell friends to connect to http://${net.address}:3001)`);
-          foundRadmin = true;
-        } else {
-          console.log(`  => [${name}] IP address: ${net.address}`);
+let currentPort = PORT;
+
+function startServer(port) {
+  currentPort = port;
+
+  server.removeAllListeners('error');
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${port} is already in use. Trying port ${port + 1}...`);
+      startServer(port + 1);
+    } else {
+      console.error('Server error:', err);
+      process.exit(1);
+    }
+  });
+
+  server.listen(port, '0.0.0.0', () => {
+    console.log(`LAN Messenger server running on port ${port}`);
+    console.log('--------------------------------------------------');
+    console.log('Available network interfaces on this machine:');
+    const nets = os.networkInterfaces();
+    let foundRadmin = false;
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name]) {
+        if (net.family === 'IPv4' && !net.internal) {
+          const isRadmin = name.toLowerCase().includes('radmin') || net.address.startsWith('26.');
+          if (isRadmin) {
+            console.log(`  => [RADMIN VPN] IP address: ${net.address} (Tell friends to connect to http://${net.address}:${port})`);
+            foundRadmin = true;
+          } else {
+            console.log(`  => [${name}] IP address: ${net.address}`);
+          }
         }
       }
     }
+    if (!foundRadmin) {
+      console.log('  WARNING: Could not explicitly identify a Radmin VPN IP interface (usually starts with 26.x.x.x).');
+      console.log('  Make sure Radmin VPN is turned on and connected.');
+    }
+    console.log('--------------------------------------------------');
+  });
+}
+
+startServer(PORT);
+
+// ═══════════════════════════════════════════════════════════════════════
+// Graceful shutdown
+// ═══════════════════════════════════════════════════════════════════════
+function flushAndExit() {
+  console.log('\nShutting down gracefully...');
+  let pending = 0;
+
+  function done() {
+    if (--pending <= 0) process.exit(0);
   }
-  if (!foundRadmin) {
-    console.log('  WARNING: Could not explicitly identify a Radmin VPN IP interface (usually starts with 26.x.x.x).');
-    console.log('  Make sure Radmin VPN is turned on and connected.');
-  }
-  console.log('--------------------------------------------------');
-});
+
+  const data = Array.from(chats.values());
+  pending++;
+  fs.writeFile(CHATS_FILE, JSON.stringify(data, null, 2), 'utf8', (err) => {
+    if (err) console.error('Failed to save chats on shutdown:', err);
+    done();
+  });
+
+  pending++;
+  fs.writeFile(WALL_FILE, JSON.stringify(wallPosts, null, 2), 'utf8', (err) => {
+    if (err) console.error('Failed to save wall posts on shutdown:', err);
+    done();
+  });
+
+  pending++;
+  fs.writeFile(FEED_FILE, JSON.stringify(feedPosts, null, 2), 'utf8', (err) => {
+    if (err) console.error('Failed to save feed posts on shutdown:', err);
+    done();
+  });
+
+  pending++;
+  fs.writeFile(USERS_FILE, JSON.stringify(usersProfile, null, 2), 'utf8', (err) => {
+    if (err) console.error('Failed to save user profiles on shutdown:', err);
+    done();
+  });
+
+  setTimeout(() => process.exit(1), 5000);
+}
+
+process.on('SIGINT', flushAndExit);
+process.on('SIGTERM', flushAndExit);
+
+

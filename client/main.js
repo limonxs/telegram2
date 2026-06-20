@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, session, desktopCapturer } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const isDev = !app.isPackaged;
 const { autoUpdater } = require('electron-updater');
 
@@ -7,20 +8,31 @@ const { autoUpdater } = require('electron-updater');
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
+function sendStatusToWindow(channel, data) {
+  const windows = BrowserWindow.getAllWindows();
+  if (windows.length > 0) {
+    windows[0].webContents.send(channel, data);
+  }
+}
+
 autoUpdater.on('checking-for-update', () => {
-  console.log('Checking for update...');
+  sendStatusToWindow('updater-status', { status: 'checking', text: 'Поиск обновлений...' });
 });
 
 autoUpdater.on('update-available', (info) => {
-  console.log('Update available:', info.version);
+  sendStatusToWindow('updater-status', { status: 'available', text: `Доступно обновление: ${info.version}. Идет загрузка...` });
 });
 
 autoUpdater.on('update-not-available', (info) => {
-  console.log('Update not available.');
+  sendStatusToWindow('updater-status', { status: 'not-available', text: 'У вас установлена последняя версия.' });
 });
 
 autoUpdater.on('error', (err) => {
-  console.error('Error in auto-updater:', err);
+  sendStatusToWindow('updater-status', { status: 'error', text: `Ошибка обновления: ${err.message}` });
+});
+
+autoUpdater.on('download-progress', (progressObj) => {
+  sendStatusToWindow('updater-progress', progressObj.percent);
 });
 
 autoUpdater.on('update-downloaded', (info) => {
@@ -103,6 +115,30 @@ const registerTikTokIPC = () => {
   });
 };
 
+const registerAppLevelIPC = () => {
+  ipcMain.on('check-for-updates', () => {
+    try {
+      autoUpdater.checkForUpdatesAndNotify().catch(err => {
+        const { dialog } = require('electron');
+        dialog.showMessageBox({ type: 'error', title: 'Ошибка обновления', message: err.message });
+      });
+    } catch (err) {
+      const { dialog } = require('electron');
+      dialog.showMessageBox({ type: 'error', title: 'Ошибка обновления', message: err.message });
+    }
+  });
+
+  ipcMain.on('log-error', (event, errorMessage) => {
+    try {
+      const logPath = path.join(app.getPath('userData'), 'error.log');
+      const timestamp = new Date().toISOString();
+      fs.appendFileSync(logPath, `[${timestamp}] ${errorMessage}\n`);
+    } catch (e) {
+      console.error('Failed to write to client error log:', e);
+    }
+  });
+};
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
@@ -131,6 +167,7 @@ function createWindow() {
 app.whenReady().then(() => {
   registerDisplayMediaIPC();
   registerTikTokIPC();
+  registerAppLevelIPC();
   createWindow();
 
   if (!isDev) {

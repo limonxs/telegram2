@@ -1,0 +1,16 @@
+{
+  "name": "telecord-mobile",
+  "version": "1.0.0",
+  "description": "Telecord Mobile App wrapper using Capacitor",
+  "main": "index.js",
+  "scripts": {
+    "sync": "cap sync"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/core": "^6.1.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.0"
+  }
+}
